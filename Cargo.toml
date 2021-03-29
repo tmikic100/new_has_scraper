@@ -1,0 +1,15 @@
+[package]
+name = "new_has_scraper"
+version = "0.1.0"
+authors = ["Tomislav Mikić <tmikic100@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lazy_static = "1.4.0"
+regex = "1"
+reqwest = { version = "0.10", features = ["blocking", "json"] }
+scraper = "0.12.0"
+term-table = "1.3.0"
+indicatif = "0.15.0"
