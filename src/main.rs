@@ -142,7 +142,7 @@ fn extractdata(text: &str, discp: &str, extra: Vec<&str>) -> Vec<Vec<String>> {
     	static ref wind: Regex = Regex::new(r"([+-]+\d,\d)| 0,0").unwrap();
         static ref re1: Regex = Regex::new(r"(?u)(\d*[;:]*\d*:*\d+,\d{1,2}|\d*[;:]*\d*:\d+) ([ +-]{0,1}\d,\d)* +([A-Za-zčćžšđČĆŽŠĐ ]+)(\d{2}.\d{2}.\d{4}) ([A-ZČĆŽŠĐ]+) +([A-Za-zčćžšđČĆŽŠĐ,/ ]+)(\d{2}.\d{2}.\d{4})").unwrap();
         static ref re2: Regex = Regex::new(r"(?um)(\d{3,}) +([A-Za-zčćžšđČĆŽŠĐ ]+) +(\d{2}.\d{2}.\d{4}) ([A-ZČĆŽŠĐ]+) +([A-Za-zčćžšđČĆŽŠĐ,/ ]+) +(\d{2}.\d{2}.\d{4})\s+<font style='font-size:7.0pt'>([a-z0-9/:+, -]+)").unwrap();
-        static ref re3: Regex = Regex::new(r"(?um)(\d*:*\d+,\d{2}) +([A-Z ]+[,-]+ \w+) +([A-Za-zčćžšđČĆŽŠĐ,/ ]+) +(\d{2}.\d{2}.\d{4})\s+<font style='font-size:7.0pt'>([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+), ([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+), ([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+), ([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+)").unwrap();
+        static ref re3: Regex = Regex::new(r"(?um)(\d*:*\d+,\d{2}) +([A-Za-zčćžšđČĆŽŠĐ -]+[,-] [A-Za-zčćžšđČĆŽŠĐ]+ [A-Za-zčćžšđČĆŽŠĐ]*) +([A-Za-zčćžšđČĆŽŠĐ,/ ]+) +(\d{2}.\d{2}.\d{4})\s+<font style='font-size:7.0pt'>([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+), ([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+), ([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+), ([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+)").unwrap();
     }
 	let mut line:Vec<String> = Vec::new();
     let mut result = Vec::new();
@@ -290,6 +290,16 @@ fn searchName(data: Vec<Vec<Vec<String>>>, search: &str) -> Vec<Vec<Vec<String>>
 	}
 	res
 }
+
+fn get_categories(data: Vec<Vec<Vec<String>>>) -> Vec<String>{
+	let mut res = Vec::new();
+	for x in data{
+		if x[0][1].find(".csv").unwrap_or(99) == 99 {
+			res.push(x[0][1].clone());
+		}
+	}
+	res
+}
 fn getDiscipline(data: Vec<Vec<Vec<String>>>, discip: &str) -> Vec<Vec<Vec<String>>> {
 	let mut res = Vec::new();
 	let discip = discip.replace("HJ", "High Jump")
@@ -383,15 +393,6 @@ fn CLI_question_alias(question:&str, answers:Vec<String>, alias:Vec<Vec<String>>
 	}
 	answers[res].clone()
 }
-fn get_categories(data: Vec<Vec<Vec<String>>>) -> Vec<String>{
-	let mut res = Vec::new();
-	for x in data{
-		if x[0][1].find(".csv").unwrap_or(99) == 99 {
-			res.push(x[0][1].clone());
-		}
-	}
-	res
-}
 fn displayTable(data: Vec<Vec<Vec<String>>>) {
 	for x in 0..data.len() {
 		let mut table = term_table::Table::new();
@@ -423,7 +424,6 @@ fn saveCSV(data: Vec<Vec<Vec<String>>>){
 	let mut csvtotal:String = String::new();
 	let mut first = true;
 	let mut lpos = 0;
-	println!("{:?}", data);
 	for x in 0..data.len(){
 		if data[x].len() != 1 {
 			for y in 0..data[x].len(){
@@ -451,7 +451,6 @@ fn saveCSV(data: Vec<Vec<Vec<String>>>){
 					}
 				}
 		}else{
-			println!("{} ->  {:?}",x , data[x]);
 			if first == true && data[x][0].len() == 2 && data[x][0][1].find(".csv").unwrap_or(99) != 99 {
 				lpos = x;
 				first = false;
@@ -468,6 +467,33 @@ fn saveCSV(data: Vec<Vec<Vec<String>>>){
 	println!("{}", "/has/".to_owned() + &data[lpos][0][0].clone() + &*"/total.csv");
 	csvtotal += &(csv);
 	fs::write("/has/".to_owned() + &data[lpos][0][0].clone() + &*"/total.csv", csvtotal.clone()).expect("Unable to write file");
+}
+fn get_category_alias(category: String) -> Vec<String>{
+	let mut res = Vec::<String> ::new();
+	let split = category.split("-").collect::<Vec<_>>();
+	let dual = split[1].split("/").collect::<Vec<_>>();
+	if dual.len() == 1{
+		res.push(dual[0].replace(" ",""));
+	}else{
+		res.push(dual[0].replace("",""));
+		res.push(dual[1].replace("",""));
+		res.push(dual[1].replace("High Jump",       "HJ" )
+		.replace("Long Jump",       "LJ" )
+		.replace("Triple Jump",     "TJ" )
+		.replace("Pole Vault",      "PV" )
+		.replace("Shoot Put",       "SP" )
+		.replace("Discus Throw",    "DT" )
+		.replace("Javelin Throw",   "JT" )
+		.replace("Hammer Throw",    "HT" )
+		.replace("m Hurdles",        "mH" )
+		.replace( "m Steeplechase",  "mSC")
+		.replace("Half Marathon",   "HM" )
+		.replace("Race Walking",  "RW")
+		.replace("(Road Race)","")
+		.replace("Road","")
+		.replace(" ",""));
+	}
+	res
 }
 fn main() {
 	let year = CLI_question("Choose a year",get_years());
@@ -499,7 +525,11 @@ fn main() {
 		data.insert(0,vec!(vec!(year.clone() , age.clone().replace(".html",".csv").replace(".htm",".csv"))));
 		let ans = CLI_question("Do you want to see all categories", vec!("yes".to_string(),"no".to_string()));
 		if ans == "no"{
-			category = CLI_question("Choose a category", get_categories(data.clone()));
+			let mut alias:Vec<Vec<String>> = vec![];
+			for x in get_categories(data.clone()){
+				alias.push(get_category_alias(x));
+			}
+			category = CLI_question_alias("Choose a category", get_categories(data.clone()),alias);
 			data = getDiscipline(data.clone(), &*category);
 		}
 	}
@@ -509,6 +539,8 @@ fn main() {
 		data = searchName(data.clone(), &*key);
 	}
 	let ans = CLI_question("Do you want to save the result", vec!("yes".to_string(),"no".to_string()));
+	if ans == "yes"{
+		saveCSV(data.clone());
+	}
 	displayTable(data.clone());
-	saveCSV(data.clone());
 }
