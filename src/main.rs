@@ -302,18 +302,6 @@ fn get_categories(data: Vec<Vec<Vec<String>>>) -> Vec<String>{
 }
 fn getDiscipline(data: Vec<Vec<Vec<String>>>, discip: &str) -> Vec<Vec<Vec<String>>> {
 	let mut res = Vec::new();
-	let discip = discip.replace("HJ", "High Jump")
-		.replace("LJ", "Long Jump")
-		.replace("TJ", "Triple Jump")
-		.replace("PV", "Pole vault")
-		.replace("SP", "Shoot put")
-		.replace("DT", "Discus Throw")
-		.replace("JT", "Javelin Throw")
-		.replace("HT", "Hammer throw")
-		.replace("mH", "mhurdles")
-		.replace("mSC", "mSteeplechase")
-		.replace("HM", "half marathon")
-		.replace("mRW", "m race walking");
 	for x in data{
 		if x.len() == 1{
 			res.push(x.clone());
@@ -394,11 +382,14 @@ fn CLI_question_alias(question:&str, answers:Vec<String>, alias:Vec<Vec<String>>
 	answers[res].clone()
 }
 fn displayTable(data: Vec<Vec<Vec<String>>>) {
-	for x in 0..data.len() {
+	for x in 1..data.len() {
 		let mut table = term_table::Table::new();
 		table.max_column_width = 60;
 		table.style = term_table::TableStyle::extended();
-		for y in 0..data[x].len() {
+		table.add_row(Row::new(vec![
+			TableCell::new_with_alignment(data[x][0][1].to_string(), data[x][1].len(), term_table::table_cell::Alignment::Center)
+		]));
+		for y in 1..data[x].len() {
 			let mut rows = Vec::new();
 			let mut added = false;
 			for z in 0..data[x][y].len() {
@@ -463,8 +454,6 @@ fn saveCSV(data: Vec<Vec<Vec<String>>>){
 			}
 		}
 	}
-
-	println!("{}", "/has/".to_owned() + &data[lpos][0][0].clone() + &*"/total.csv");
 	csvtotal += &(csv);
 	fs::write("/has/".to_owned() + &data[lpos][0][0].clone() + &*"/total.csv", csvtotal.clone()).expect("Unable to write file");
 }
@@ -495,6 +484,30 @@ fn get_category_alias(category: String) -> Vec<String>{
 	}
 	res
 }
+fn modify_data(mut data: Vec<Vec<Vec<String>>>) -> Vec<Vec<Vec<String>>>{
+	for x in 0..data.len(){
+		let mut wind = false;
+		for y in 1..data[x].len(){
+			if data[x][y][0].to_lowercase().replace(" ","").find(&"uz pomoć vjetra / wind assisted".to_lowercase().replace(" ","")).unwrap_or(99) != 99 || data[x][y][0].to_lowercase().replace(" ","").find(&"nema podataka o vjetru / no wind information".to_lowercase().replace(" ","")).unwrap_or(99) != 99{
+				wind = true;
+				continue;
+			}
+			if wind == false{
+				data[x][y].insert(0, y.to_string());
+			}else{
+				data[x][y].insert(0, "Invaild".to_string());
+			}
+		}
+		if data[x][0][0] == "Single" || data[x][0][0] == "Multi" {
+			data[x].insert(1, vec!("Rank".to_string(),"Result".to_string(),"Name".to_string(),"Birthday".to_string(),"Club".to_string(),"City".to_string(),"Date".to_string()));
+		} else if data[x][0][0] == "Wind" {
+			data[x].insert(1, vec!( "Rank".to_string(),"Result".to_string(),"Wind".to_string(),"Name".to_string(),"Birthday".to_string(),"Club".to_string(),"City".to_string(),"Date".to_string()));
+		} else if data[x][0][0] == "Rally"{
+			data[x].insert(1, vec!("Rank".to_string(),"Result".to_string(),"Team".to_string(),"City".to_string(),"Date".to_string(),"1st runner".to_string(),"2nd runner".to_string(),"3rd runner".to_string(),"4th runner".to_string()));
+		}
+	}
+	data
+}
 fn main() {
 	let year = CLI_question("Choose a year",get_years());
 	let age:String;
@@ -523,6 +536,7 @@ fn main() {
 		age = CLI_question_alias("Choose a age",get_ages(year.clone()), alias);
 		data = getDataFromWebsite(&*("https://www.has.hr/images/stories/HAS/tabsez/".to_owned() + &year.clone() + "/" + &age.clone()));
 		data.insert(0,vec!(vec!(year.clone() , age.clone().replace(".html",".csv").replace(".htm",".csv"))));
+		data = modify_data(data.clone());
 		let ans = CLI_question("Do you want to see all categories", vec!("yes".to_string(),"no".to_string()));
 		if ans == "no"{
 			let mut alias:Vec<Vec<String>> = vec![];
