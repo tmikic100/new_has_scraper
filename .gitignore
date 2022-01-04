@@ -1,1 +1,12 @@
 /target
+*.txt
+*.errlog
+src/old main.rs
+src/errlog
+src/a.rs
+src/_.rs
+HWS.exe
+src/y.rs
+test.txt
+error.log
+test.txt
