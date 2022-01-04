@@ -1,8 +1,9 @@
 #[macro_use] extern crate lazy_static;
 extern crate regex;
-
+use std::env;
 use regex::Regex;
-use std::{fs, io};
+use std::fs;
+use std::io;
 use std::path::Path;
 use scraper::{Selector, Html};
 use term_table::table_cell::TableCell;
@@ -12,59 +13,358 @@ use std::collections::HashSet;
 use std::hash::Hash;
 use std::cmp::Eq;
 use std::net::SocketAddr;
-//Funkcija za uzimanje godina omogucuje web hopping na hassovoj stranicu
-pub fn get_years_net() -> Vec<String> {
-	let res = reqwest::blocking::get("https://www.has.hr/images/stories/HAS/tabsez");
-	let res = match res{
-		Ok(res) => {
-			let year = res.text_with_charset("windows-1250").unwrap();
-			let fragment = Html::parse_fragment(&year.to_string());
-			let selector = Selector::parse("a").unwrap();
-			let mut years = Vec::new();
-			for y in fragment.select(&selector) {
-				let txt = y.text().collect::<Vec<_>>();
-				if txt[0].len() == 5 {
-					years.push(txt[0].to_string().replace("/",""));
+use std::time::Instant;
+fn calculate_result(result:f64) -> String{
+	let h = (result/(60.00*60.00));
+	let h = h.floor();
+	let min = ((result%(60.00*60.00))/60.00).floor();
+	let sec = result%60.00;
+	let sec = ((sec*100.00).round())/100.00;
+	let mut sresult = "".to_string();
+	if h == 0.00{
+		if min != 0.00{
+			if sec != 0.00{
+				if sec >= 10.00{
+					sresult = format!("{}:{:.2}",min,sec);
+				}else{
+					sresult = format!("{}:0{:.2}",min,sec);
+				}
+			}else{
+				sresult = format!("{}:00,00",min);
+			}
+		}else{
+			sresult = format!("{:.2}",sec);
+		}
+	}else{
+		if min != 0.00{
+			if min >= 10.00{
+				if sec != 0.00{
+					if sec >= 10.00{
+						sresult = format!("{}:{}:{:.2}",h,min,sec);
+					}else{
+						sresult = format!("{}:{}:0{:.2}",h,min,sec);
+					}
+				}else{
+					sresult = format!("{}:{}:00,00",h,min);
+				}
+			}else{
+				if sec != 0.00{
+					if sec >= 10.00{
+						sresult = format!("{}:0{}:{:.2}",h,min,sec);
+					}else{
+						sresult = format!("{}:0{}:0{:.2}",h,min,sec);
+					}
+				}else{
+					sresult = format!("{}:0{}:00,00",h,min);
 				}
 			}
-			years
-		},
-		Err(e) => vec!("Failed".to_string())
-	};
-	res
-}
-//funkcija za uzimanje kategorija omogucuje uzimanje podataka s hasove stranice
-pub fn get_ages_net(year:String) -> Vec<String>{
-	let url = "https://www.has.hr/images/stories/HAS/tabsez/".to_owned() + &year;
-	let res = reqwest::blocking::get(&url).unwrap();
-	let age = res.text_with_charset("windows-1250").unwrap();
-	let fragment = Html::parse_fragment(&age.to_string());
-	let selector = Selector::parse("a").unwrap();
-	let mut ages = Vec::new();
-	for y in fragment.select(&selector) {
-		let txt = y.text().collect::<Vec<_>>();
-		if txt[0].find(".html").unwrap_or(99) != 99 || txt[0].find(".htm").unwrap_or(99) != 99 {
-			ages.push(txt[0].to_string());
+		}else{
+			if sec >= 10.00{
+				sresult = format!("{}:00:{:.2}",h,sec);
+			}else{
+				sresult = format!("{}:00:0{:.2}",h,sec);
+			}
 		}
 	}
-	ages
+	sresult.replace(".",",")	
 }
-pub fn get_years() -> Vec<String> {
-	let mut years = Vec::new();
-    let paths = fs::read_dir("/has/cache/").unwrap();
-    for path in paths {
-        years.push(path.unwrap().path().to_string_lossy().replace("/has/cache/",""));
-    }
-	years
+fn get_result(text:String) -> f64{
+	let text = text.replace(";",":");
+	let minutes = text.split(":").collect::<Vec<_>>();
+	let mut result:f64 = 0.0;
+	if minutes.len() == 1{
+		result = minutes[0].replace(",",".").parse::<f64>().unwrap();
+	}else if minutes.len() == 2{
+		result = minutes[0].parse::<f64>().unwrap()*60.0+minutes[1].replace(",",".").parse::<f64>().unwrap();
+	}else{
+		result = minutes[0].parse::<f64>().unwrap()*60.0*60.0+minutes[1].parse::<f64>().unwrap()*60.0+minutes[2].replace(",",".").parse::<f64>().unwrap();
+	}
+	result
 }
-//funkcija za uzimanje kategorija omogucuje uzimanje podataka s hasove stranice
-pub fn get_ages(year:String) -> Vec<String>{
-	let mut ages = Vec::new();
-    let paths = fs::read_dir(&("/has/cache/".to_owned()+&year.clone())).unwrap();
-    for path in paths {
-        ages.push(path.unwrap().path().to_string_lossy().replace(&("/has/cache/".to_owned()+&year.clone()+"\\"),""));
-    }
-	ages
+fn format_result(text:String) -> String{
+	let minutes = text.split(":").collect::<Vec<_>>();
+	let mut result:f64 = 0.0;
+	if minutes.len() == 1{
+		result = minutes[0].replace(",",".").parse::<f64>().unwrap();
+	}else if minutes.len() == 2{
+		result = minutes[0].parse::<f64>().unwrap()*60.0+minutes[1].replace(",",".").parse::<f64>().unwrap();
+	}else{
+		result = minutes[0].parse::<f64>().unwrap()*60.0*60.0+minutes[1].parse::<f64>().unwrap()*60.0+minutes[2].replace(",",".").parse::<f64>().unwrap();
+	}
+	calculate_result(result)
+}
+
+//https://github.com/GlaivePro/IaafPoints/blob/master/LICENSE.md
+//uzimanje magicnih brojeva iz csv-a tako da se moze izracunati IAAF-ovi (WA) bodovi
+fn get_magic_numbers(mut search: String) -> Vec<String>{
+	let contents = fs::read_to_string("magicnumbers.csv")
+    .expect("Something went wrong reading the file");
+	let mut array = Vec::new();
+	if search.contains("x") || search.contains("0"){
+		search = search + &"m".to_string();
+		search = search.replace("mm","m").replace("000mWm","kmW").replace("000Wm","kmW").replace("kmWm","kmW").replace("mHm","mH").replace("Hm","mH").replace("mSCm","mSC").replace("SCm","mSC");
+	}
+	for x in contents.split("\n"){
+		array.push(x.split(",").collect::<Vec<_>>());
+	}
+	let mut res = Vec::new();
+	for x in array{
+		if search.to_lowercase() == x[0].to_lowercase(){
+			for y in x{
+				res.push(y.trim().to_string());
+			}
+			break;
+		}
+	}
+	res
+}
+//izracunjavanje IAAF-ovih bodova
+fn calculate_points(result: f64, discip: String, age: String, year: String)-> String{
+	let mut search = get_age_data(age,year) + &get_discipline_alias(discip);
+	let magic = get_magic_numbers(search);
+	let mut points:f64 = 0.0;
+	if magic.len() == 4{
+		let resultShift:f64 = magic[1].parse().unwrap();
+		let conversionFactor:f64 = magic[2].parse().unwrap();
+		let pointShift:f64 = magic[3].parse().unwrap();
+		points = conversionFactor * (result + resultShift).powf(2.0) + pointShift;
+		points = points.floor();
+	}
+	points.to_string()
+}
+fn calculate_points_manual(result: String, search: String)-> String{
+	let magic = get_magic_numbers(search);
+	let mut points:f64 = 0.0;
+	let result = get_result(result);
+	if magic.len() == 4{
+		let resultShift:f64 = magic[1].parse().unwrap();
+		let conversionFactor:f64 = magic[2].parse().unwrap();
+		let pointShift:f64 = magic[3].parse().unwrap();
+		points = conversionFactor * (result + resultShift).powf(2.0) + pointShift;
+		points = points.floor();
+	}
+	points.to_string()
+}
+fn display(data: Vec<Vec<Vec<String>>>){
+	println!("");
+	for x in 0..data.len(){
+		let mut table = term_table::Table::new();
+		if data[x].len() > 1{
+			if data[x][1][0] == "Discipline" 	{
+				table.max_column_width = 60;
+				table.style = term_table::TableStyle::extended();
+				table.add_row(Row::new(vec![
+					TableCell::new_with_alignment(data[x][0][2].clone() + &" ".to_owned() + &data[x][0][1].clone()   , 5, term_table::table_cell::Alignment::Center)
+				]));
+				for y in 1..data[x].len(){
+					let mut rows = Vec::new();
+					let mut added = false;
+					if data[x].len() != 1{
+						for z in 0..data[x][y].len() {
+							rows.push(TableCell::new(data[x][y][z].clone()));
+							added = true;
+						}
+					}else{	
+						table.add_row(Row::new(vec![
+							TableCell::new_with_alignment(data[x][y][0].clone() , 5, term_table::table_cell::Alignment::Center)
+						]));
+					}
+					if added == true{
+						table.add_row(Row::new(rows));
+					}
+				}
+			}else if data[x][0][data[x][0].len()-2] == "PB" || data[x][0][1]== "Discipline"{
+				table.max_column_width = 60;
+				table.style = term_table::TableStyle::extended();
+				for y in 0..data[x].len(){
+					let mut rows = Vec::new();
+					let mut added = false;
+					for z in 0..data[x][y].len() {
+						rows.push(TableCell::new(data[x][y][z].clone()));
+						added = true;
+					}
+					if added == true{
+						table.add_row(Row::new(rows));
+					}
+				}
+			}else{
+				table.max_column_width = 60;
+				table.style = term_table::TableStyle::extended();
+				if data[x][0][3] == "single" || data[x][0][3] == "wind"{
+					table.add_row(Row::new(vec!("Rank".to_string(),"Mark".to_string(),"Wind".to_string(),"Name".to_string(),"Birthday".to_string(),"Club".to_string(),"City".to_string(),"Date".to_string())));
+				}else if data[x][0][3] == "multi"{
+					table.add_row(Row::new(vec!("Rank".to_string(),"Mark".to_string(),"Name".to_string(),"Birthday".to_string(),"Club".to_string(),"City".to_string(),"Date".to_string(),"Results".to_string())));				
+				}else if data[x][0][3] == "rally"{
+					table.add_row(Row::new(vec!("Rank".to_string(),"Mark".to_string(),"Name".to_string(),"City".to_string(),"Date".to_string(),"Runner 1".to_string(),"Runner 2".to_string(),"Runner 3".to_string(),"Runner 4".to_string())));					
+				}
+				for y in 1..data[x].len(){
+					let mut rows = Vec::new();
+					let mut added = false;
+					if !data[x][y][0].contains("/"){
+						for z in 0..data[x][y].len() {
+							rows.push(TableCell::new(data[x][y][z].clone()));
+							added = true;
+						}
+					}else{	
+						table.add_row(Row::new(vec![
+							TableCell::new_with_alignment(data[x][y][0].clone() , 8, term_table::table_cell::Alignment::Center)
+						]));
+					}
+					if added == true{
+						table.add_row(Row::new(rows));
+					}
+				}					
+			}
+		println!("{}", table.render());
+		}
+	}
+}
+fn save_csv(data:Vec<Vec<Vec<String>>>){
+	let mut csv:String = String::new();
+	let mut name:String = String::new();
+	csv += "sep=~\n";
+	for x in 0..data.len(){
+		if data[x].len() > 1{
+			if data[x][1][0] == "Discipline"{
+				name = data[x][0][2].clone();
+				csv += &(data[x][0][2].to_string() +" "+&data[x][0][1] + "\n");
+				for y in 1..data[x].len(){
+					for z in 0..data[x][y].len()-1{
+						csv += &(data[x][y][z].to_string() + "~");
+					}
+					csv += &(data[x][y][data[x][y].len()-1].to_string() + "\n");
+				}
+			}else if data[x][0][data[x][0].len()-2] == "PB"{
+				name = data[x][0][0].clone();
+				for y in 0..data[x].len(){
+					for z in 0..data[x][y].len()-1{
+						csv += &(data[x][y][z].to_string() + "~");
+					}
+					csv += &(data[x][y][data[x][y].len()-1].to_string() + "\n");
+				}
+			}else{
+				if data[x][0][3] == "single"{
+					csv += &("Rank~Mark~Wind~Name~Birthday~Club~City~Date\n");
+				}else if data[x][0][3] == "multi"{
+					csv += &("Rank~Mark~Name~Birthday~Club~City~Date~Results\n");
+				}else if data[x][0][3] == "rally"{
+					csv += &("Rank~Mark~Name~City~Club~Runner 1~Runner 2~Runner 3~Runner 4");
+					
+				}
+				for y in 1..data[x].len(){
+					for z in 0..data[x][y].len()-1{
+						csv += &(data[x][y][z].to_string() + "~");
+					}
+					csv += &(data[x][y][data[x][y].len()-1].to_string() + "\n");
+				}			
+			}
+			csv += &"\n";
+		}
+	}
+	fs::create_dir_all("/has/export/".to_owned() + &data[0][0][0].clone()+&*"/");
+	fs::write("/has/export/".to_owned() + &data[0][0][0].clone()+&*"/"+&name.clone() + &*".csv", csv.clone()).expect("Unable to write file");
+}
+fn save_stats(data:Vec<Vec<Vec<String>>>, key:String){
+	let mut csv:String = String::new();
+	let mut name:String = String::new();
+	for x in 0..data.len(){
+		for y in 0..data[x].len(){
+			for z in 0..data[x][y].len()-1{
+				csv += &(data[x][y][z].to_string() + "~");
+			}
+			csv += &(data[x][y][data[x][y].len()-1].to_string() + "\n");
+		}
+		csv += &"\n";
+	}
+	fs::create_dir_all("/has/export/statistics/");
+	fs::write("/has/export/statistics/".to_owned() + &key.clone() + &*".csv", csv.clone()).expect("Unable to write file");
+}
+//funkcija za CLI za unos podataka
+
+pub fn CLI_input(question:&str) -> String {
+	let mut ans:String= "".to_string();
+	println!("{}", question);
+	io::stdin()
+		.read_line(&mut ans)
+		.expect("Failed to read line");
+	let ans = ans.replace("\n","").replace("\r","");
+	ans
+}
+//funkcija za CLI pitanja
+pub fn CLI_question(question:&str, mut answers:Vec<String>, all: bool) -> String{
+	let mut ans:String= "".to_string();
+	println!("{}", question);
+	if answers.len() == 2{
+		println!("{} or {}",answers[0],answers[1]);
+	}else{
+		for x in 0..answers.len(){
+			println!("{}",answers[x]);
+		}
+	}
+	if all == true{
+		println!("all");
+		answers.push("all".to_string());
+	}
+	let mut response = "".to_string();
+	loop{
+		let mut ans = "".to_string();
+		io::stdin()
+			.read_line(&mut ans)
+			.expect("Failed to read line");
+
+		let ans:String = ans.to_lowercase().split_whitespace().collect();
+		for x in 0..answers.len(){
+			let comp:String = answers[x].to_lowercase().split_whitespace().collect();
+			if ans == comp{
+				let ans = answers[x].split_whitespace().collect();
+				return ans;
+			}
+		}
+		println!("Invaild answer");
+	}
+}
+//funkcija za CLI pitanja ali maskiranje izlaza s drugim imenima
+fn CLI_question_alias(question:&str, answers:Vec<String>, alias:Vec<Vec<String>>) -> String{
+	let mut ans= "".to_string();
+	let mut answer = "".to_string();
+	println!("{}", question);
+	for x in 0..alias.len() {
+		let mut pat = String::new();
+		for y in 0..alias[x].len()-1{
+			pat.push_str(&*format!("{} or ", alias[x][y]));
+		}
+		pat.push_str(&*format!("{}", alias[x][alias[x].len()-1]));
+		println!("{}", pat);
+	}
+	println!("all");
+	let mut res = 0;
+	'main:loop{
+		let mut ans= "".to_string();
+		io::stdin()
+			.read_line(&mut ans)
+			.expect("Failed to read line");
+
+		let mut ans:String = ans.to_lowercase().split_whitespace().collect();
+		for x in 0..alias.len(){
+			for y in 0..alias[x].len() {
+				let comp:String = alias[x][y].to_lowercase().split_whitespace().collect();
+				if ans == comp {
+					res = x;
+					break 'main;
+				}
+				if ans == "all"{
+					res = answers.len()+1;
+					break 'main;
+				}
+			}
+		}
+		println!("Invaild answer");
+	}
+	if res != answers.len()+1{
+		answers[res].clone()
+	}else{
+		"all".to_string()
+	}
 }
 //omogucuje uzimanje magicnih brojeva pomocu kategorije i godine
 pub fn get_age_data(age:String, year:String) -> String{
@@ -83,8 +383,41 @@ pub fn get_age_data(age:String, year:String) -> String{
 		.replace("ssw", "f")
 		.replace(&year[2..4], "&")
 		.replace("&d", "i")
-		.replace("&", "o");
+		.replace("&", "o")
+		.replace(".html","").replace("1","").replace("2","").replace("3","").replace("4","").replace("5","").replace("6","");
 	data
+}
+pub fn get_discipline_alias(discip:String) -> String{
+	discip.to_lowercase().replace(" ","").replace(".","")
+	.replace("milja","1mile")
+	.replace("milje","miles")
+	.replace("desetoboj","decathlon")
+	.replace("sedmoboj","heptathlon")
+	.replace("petoboj","pentathlon")
+	.replace("vis",       "HJ" )
+	.replace("dalj",       "LJ" )
+	.replace("troskok",     "TJ" )
+	.replace("motka",      "PV" )
+	.replace("kugla",       "SP" )
+	.replace("disk",    "DT" )
+	.replace("koplje",   "JT" )
+	.replace("kladivo",    "HT" )
+	.replace("prepone",        "H" )
+	.replace("steeplechase",  "SC")
+	.replace("zapreke", "SC")
+	.replace("zapr", "SC")
+	.replace("polumaraton",   "HM" )
+	.replace("maraton","Marathon") 
+	.replace("hodanje",  "W")
+	.replace("(cesta)","")
+	.replace("cesta","")
+	.replace("000W","kmW").replace("Relay","").replace("\r","")
+	
+}
+pub fn cleanup_discipline(discip:String) -> String{
+	discip.replace(".","")
+	.replace("(cesta)","")
+	.replace("zapr", "zapreke")
 }
 //radi nadimke za godine tako da je lakse izabrat kategoriju
 pub fn get_age_alias(age:String, year:String) -> Vec<String>{
@@ -142,1105 +475,1033 @@ pub fn get_age_alias(age:String, year:String) -> Vec<String>{
 		.replace("ssw", "W35"));
 	res
 }
-//uzima prvobitne podatke iz hasovih podataka
-fn getDataFromWebsite(url: &str) -> Vec<Vec<Vec<String>>> {
-	let res = reqwest::blocking::get(url).unwrap();
-	let data = res.text_with_charset("windows-1250").unwrap();
-	let mut v = data.split("\n").collect::<Vec<&str>>();
-	let mut total:Vec<Vec<Vec<String>>> = Vec::new();
-	let mut page:String = "".to_string();
-	let mut pos = 0;
-	let mut lpos = 0;
-	let mut index = 0;
-	let mut meta = false;
-	let mut metapos = Vec::new();
-	for x in 0..v.len(){
-		if meta == true{
-			if v[x].find("(").unwrap_or(99) != 99{
-				metapos.push(v[x].clone());
-			}
-			meta = false;
-		}
-		if v[x].find("<b>").unwrap_or(99) != 99 || v[x].find("</html>").unwrap_or(99) != 99{
-			if pos > 37{
-				if lpos != 0{
-					meta = true;
-					total.push(extractdata(page.as_str(), v[lpos].replace("<b>","").replace("</b>","").as_str(), metapos.clone()));
-					metapos.clear();
-					page = "".to_string();
-					index += 1;
-					lpos = 0;
-				}
-				lpos = pos;
-			}
-		}else{
-			if lpos != 0 {
-				if v[x].to_string().replace(" ","") == "    nema podataka o vjetru / no wind information".to_string().replace(" ","") || v[x].to_string().replace(" ","") ==  "    uz pomoć vjetra / wind assisted".to_string().replace(" ",""){
-					metapos.push(v[x].clone());
-					metapos.push( v[x+1].clone());
-				}
-				page.push_str(v[x]);
-				page.push_str("\n");
-			}
-		}
-		pos += 1;
-	}
-	total
-}
-//uzima prvobitne podatke iz hasovih podataka
-fn getDataFromCache(pathFile: &str) -> Vec<Vec<Vec<String>>> {
-	let data: String = fs::read_to_string(pathFile).unwrap();
-	let mut v = data.split("\n").collect::<Vec<&str>>();
+pub fn fetchWebsite(url:&str) -> Result<String, reqwest::Error>{
+	let body = reqwest::blocking::get(url)?
+    .text_with_charset("windows-1250")?;
 
-	let mut total:Vec<Vec<Vec<String>>> = Vec::new();
-	let mut page:String = "".to_string();
-	let mut pos = 0;
-	let mut lpos = 0;
-	let mut index = 0;
-	let mut meta = false;
-	let mut metapos = Vec::new();
-	for x in 0..v.len(){
-		if meta == true{
-			if v[x].find("(").unwrap_or(99) != 99{
-				metapos.push(v[x].clone());
-			}
-			meta = false;
-		}
-		if v[x].find("<b>").unwrap_or(99) != 99 || v[x].find("</html>").unwrap_or(99) != 99{
-			if pos > 36{
-				if lpos != 0{
-					meta = true;
-					total.push(extractdata(page.as_str(), v[lpos].replace("      <pre><font face=\"Courier New, Courier, mono\">","").replace("<br>","").replace("<b>","").replace("</b>","").as_str(), metapos.clone()));
-					metapos.clear();
-					page = "".to_string();
-					index += 1;
-					lpos = 0;
-				}
-				lpos = pos;
-			}
-		}else{
-			if lpos != 0 {
-				if v[x].to_string().replace(" ","") == "    nema podataka o vjetru / no wind information".to_string().replace(" ","") || v[x].to_string().replace(" ","") ==  "    uz pomoć vjetra / wind assisted".to_string().replace(" ",""){
-					metapos.push(v[x].clone());
-					metapos.push( v[x+1].clone());
-				}
-				page.push_str(v[x]);
-				page.push_str("\n");
-			}
-		}
-		pos += 1;
-	}
-	total
+	Ok(body)
 }
-//iz prvobitne podatke pretvara u polja
-fn extractdata(text: &str, discp: &str, extra: Vec<&str>) -> Vec<Vec<String>> {
-    lazy_static! {
-		//regexi za uzimanje podataka i sortiranje njih
-		//vjetar
-    	static ref wind: Regex = Regex::new(r"([+-]+\d,\d)|0,0").unwrap();
-		//single
-        static ref re1: Regex = Regex::new(r"(?u)(\d*[;:]*\d*:*\d+,\d{1,2}|\d*[;:]*\d*:\d+) ([ +-]{0,1}\d,\d)* +([A-Za-zčćžšđČĆŽŠĐ ]+)(\d{2}.\d{2}.\d{4}|\d{4}) ([A-ZČĆŽŠĐ-]{0,}) +([\p{L},/ .]+)(\d{2}.\d{2}.\d{4})").unwrap();
-		//multi
-        static ref re2: Regex = Regex::new(r"(?um)(\d{3,}) +([A-Za-zčćžšđČĆŽŠĐ ]+) +(\d{2}.\d{2}.\d{4}|\d{4}) ([A-ZČĆŽŠĐ-]{0,}) +([A-Za-zčćžšđČĆŽŠĐ,/ ]+) +(\d{2}.\d{2}.\d{4})\s+<font style='font-size:7.0pt'>([a-z0-9/:+, -]+)").unwrap();
-		//rallay
-        static ref re3: Regex = Regex::new(r"(?um)(\d*:*\d+,\d{2}) +([A-ZČĆŽŠĐ ,-]+|[A-ZČĆŽŠĐ ,-]+ [ -] [A-Za-zčžćšđČĆŽŠĐ]*)[ ]{5,}([A-Za-zčćžšđČĆŽŠĐ,/ ]+) +(\d{2}.\d{2}.\d{4})\s+(?:<font style='font-size:7.0pt'>|<font size=' 1'>)([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+), ([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+), ([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+), ([A-Za-zčćžšđČĆŽŠĐ ]+[()0-9]+)").unwrap();
-    }
-	let mut line:Vec<String> = Vec::new();
-    let mut result = Vec::new();
-	let mut first = true;
-	let mut bwind = false;
-	if wind.is_match(text) == true {
-		bwind = true;
-	}
-	let mut id = "";
-	let mut p = 0;
-	for caps in re1.captures_iter(text) {
-		for x in caps.iter(){
-			if first != true {
-				match x {
-					Some(i) => {
-						if p == 1 && bwind == true{
-							if wind.is_match(i.as_str()) == false {
-								line.push("NO_WIND".to_string());
-								line.push(i.as_str().replace("  ", ""));
-							}else{
-								line.push(i.as_str().replace("  ", ""));
-							}
-						}else {
-							line.push(i.as_str().replace("  ", ""));
-							id = "Single";
-						}
-						p += 1;
-					},
-					None => ()
+pub fn cache(){
+	let website = fetchWebsite("https://www.has.hr/images/stories/HAS/tabsez/");
+	let mut years = Vec::new();
+	let _website = match website{
+		Ok(year) => {
+			let fragment = Html::parse_fragment(&year.to_string());
+			let selector = Selector::parse("a").unwrap();
+			for y in fragment.select(&selector) {
+				let txt = y.text().collect::<Vec<_>>();
+				if txt[0].contains("/"){
+					years.push(txt[0].to_string().replace("/",""));
 				}
-			}else{
-				first = false;
 			}
-		}
-		p = 0;
-		result.push(line.clone());
-		line.clear();
-		first = true;
-	}
-	for caps in re2.captures_iter(text) {
-		for x in caps.iter(){
-			if first != true {
-				match x {
-					Some(i) => {line.push(i.as_str().replace("  "," ").replace("  ",""));id="Multi"},
-					None => ()
-				}
-			}else{
-				first = false;
-			}
-		}
-		result.push(line.clone());
-		line.clear();
-		first = true;
-	}
-	for caps in re3.captures_iter(text) {
-		for x in caps.iter(){
-			if first != true {
-				match x {
-					Some(i) => {line.push(i.as_str().replace("  ",""));id="Rally"},
-					None => ()
-				}
-			}else{
-				first = false;
-			}
-		}
-		result.push(line.clone());
-		line.clear();
-		first = true;
-	}
+			fs::create_dir_all("/has/cache/".to_owned() + &years[years.len()-1].clone());
+			let year_website = fetchWebsite(&("https://www.has.hr/images/stories/HAS/tabsez/".to_owned()+&years[years.len()-1].clone()));
+			let _year_website = match year_website{
+				Ok(age) => {
+					let fragment = Html::parse_fragment(&age.to_string());
+					let selector = Selector::parse("a").unwrap();
+					for y in fragment.select(&selector) {
+						let txt = y.text().collect::<Vec<_>>();
+						if txt[0].contains(".htm"){
+							let data_website = fetchWebsite(&("https://www.has.hr/images/stories/HAS/tabsez/".to_owned()+&years[years.len()-1].clone()+"/"+&txt[0]));
+							let _data_website = match data_website{
+								Ok(data) => {
+									fs::write(&*("/has/cache/".to_owned() + &years[years.len()-1].clone() + "/" + &txt[0].clone().replace("html","htm").replace("htm","html")),data.clone()).expect("Unable to write file");
 
-	for x in 0..extra.len(){
-		for i in 0..result.len(){
-			match re1.captures(extra[x]){
-				Some(p) => {
-					match p.get(2) {
-						Some(j) => {
-							if result[i].len() > 1{
-								if result[i][1] == j.as_str() && result[i][2].replace(" ","") == p.get(3).unwrap().as_str().replace(" ",""){
-									result.insert(i,vec!(extra[x-1].to_string()));
-									break;
-								}
-							}
-						},
-						None => {
-							if result[i].len() > 1 {
-								if result[i][1] == "NO_WIND" && result[i][2].replace(" ", "") == p.get(3).unwrap().as_str().replace(" ", "") {
-									result.insert(i, vec!(extra[x - 1].to_string()));
-									break;
-								}
-							}
+								},
+								Err(o) => println!("Failed! using cache! / data")
+							};
 						}
 					}
 				},
-				None => ()
-			}
-		}
-	}
-	if extra.len() != 0{
-		if extra[0].find("(").unwrap_or(99) != 99 {
-			result.insert(0, vec!(extra[0].to_string()));
-		}
-	}
-	if wind.is_match(text) == true && id != "Multi" {
-		id = "Wind";
-	}
-	result.insert(0, vec!(id.to_string(), discp.to_string()));
-	result
+				Err(a) => println!("Failed! using cache! / age")
+			};
+		},
+		Err(e) => println!("Failed! using cache! / year")
+	};
 }
-//pretaživanje podataka
-fn searchName(data: Vec<Vec<Vec<String>>>, search: String) -> Vec<Vec<Vec<String>>> {
-	let mut res = Vec::new();
-	let search:String = search.to_lowercase().replace(" ", "").split_whitespace().collect();
-	let mut found = true;
-	let mut count = 0;
-	let mut last = 0;
-	for x in 0..data.len(){
-		if data[x].len() == 1{
-			res.push(data[x].clone());
-		}else{
-			for y in 1..data[x].len() {
-				if data[x][y].len() > 2 {
-					if data[x][0][0] == "Single" || data[x][0][0] == "Multi" {
-						if data[x][y][2].to_lowercase().replace(" ", "") == search.to_lowercase().replace(" ","") {
-							res.push(vec!(data[x][0].clone(), data[x][y].clone()));
-							found = true;
-							count = count + 1;
-						}
-					} else if data[x][0][0] == "Wind" {
-						if data[x][y][3].to_lowercase().replace(" ", "") == search.to_lowercase().replace(" ","") {
-							res.push(vec!(data[x][0].clone(), data[x][y].clone()));
-							found = true;
-							count = count + 1;
-						}
-					} else if data[x][0][0] == "Rally" {
-						if data[x][y][5].to_lowercase().replace(" ", "").find(&search.clone()).unwrap_or(99) != 99 {
-							res.push(vec!(data[x][0].clone(), data[x][y].clone()));
-							found = true;
-							count = count + 1;
-						} else
-						if data[x][y][6].to_lowercase().replace(" ", "").find(&search.clone()).unwrap_or(99) != 99 {
-							res.push(vec!(data[x][0].clone(), data[x][y].clone()));
-							found = true;
-							count = count + 1;
-						} else
-						if data[x][y][7].to_lowercase().replace(" ", "").find(&search.clone()).unwrap_or(99) != 99 {
-							res.push(vec!(data[x][0].clone(), data[x][y].clone()));
-							found = true;
-							count = count + 1;
-						} else
-						if data[x][y][8].to_lowercase().replace(" ", "").find(&search.clone()).unwrap_or(99) != 99 {
-							res.push(vec!(data[x][0].clone(), data[x][y].clone()));
-							found = true;
-							count = count + 1;
-						}
-					}
-				}
-			}
-		}
-	}
-	res
+pub fn get_years() -> Vec<String> {
+	let mut years = Vec::new();
+    let paths = fs::read_dir("/has/cache/").unwrap();
+    for path in paths {
+        years.push(path.unwrap().path().to_string_lossy().replace("/has/cache/",""));
+    }
+	years
 }
-//uzimanje svih disciplina iz polja
-fn get_categories(data: Vec<Vec<Vec<String>>>) -> Vec<String>{
-	let mut res = Vec::new();
+//funkcija za uzimanje kategorija omogucuje uzimanje podataka s hasove stranice
+pub fn get_ages(year:String) -> Vec<String>{
+	let mut ages = Vec::new();
+    let paths = fs::read_dir(&("/has/cache/".to_owned()+&year.clone())).unwrap();
+    for path in paths {
+        ages.push(path.unwrap().path().to_string_lossy().replace(&("/has/cache/".to_owned()+&year.clone()+"\\"),""));
+    }
+	ages
+}
+pub fn get_categories(data: Vec<Vec<Vec<String>>>) -> Vec<String>{
+	let mut res:Vec<String> = Vec::new();
 	for x in data{
-		if x[0][1].find(".csv").unwrap_or(99) == 99 {
-			res.push(x[0][1].clone());
+		if x.len() > 0{
+			if x[0].len() > 1{
+				res.push(x[0][2].clone());
+			}
 		}
 	}
 	res
 }
-//uzimanje jedne discipline iz polja
-fn getDiscipline(data: Vec<Vec<Vec<String>>>, discip: &str) -> Vec<Vec<Vec<String>>> {
-	let mut res = Vec::new();
+pub fn get_category(data: Vec<Vec<Vec<String>>>,category: String) -> Vec<Vec<String>>{
+	let mut res:Vec<Vec<String>> = Vec::new();
 	for x in data{
-		if x.len() == 1{
-			res.push(x.clone());
-		}
-		if x[0][1].replace(" ","").to_lowercase().find(&discip.replace(" ","").to_lowercase()).unwrap_or(99) != 99{
-			res.push(x.clone());
-		}
+		if x.len() > 0{
+			if x[0][2].to_lowercase().replace(" ","") == category.to_lowercase().replace(" ",""){
+				res = x;
+				break;
+			}
+		}	
 	}
 	res
 }
-//funkcija za CLI za unos podataka
-pub fn CLI_input(question:&str) -> String {
-	let mut ans:String= "".to_string();
-	println!("{}", question);
-	io::stdin()
-		.read_line(&mut ans)
-		.expect("Failed to read line");
-	let ans = ans.replace("\n","");
-	ans
-}
-//funkcija za CLI pitanja
-pub fn CLI_question(question:&str, mut answers:Vec<String>, all: bool) -> String{
-	let mut ans:String= "".to_string();
-	println!("{}", question);
-	if answers.len() == 2{
-		println!("{} or {}",answers[0],answers[1]);
-	}else{
-		for x in 0..answers.len(){
-			println!("{}",answers[x]);
-		}
-	}
-	if all == true{
-		println!("all");
-		answers.push("all".to_string());
-	}
-	let mut response = "".to_string();
-	loop{
-		let mut ans = "".to_string();
-		io::stdin()
-			.read_line(&mut ans)
-			.expect("Failed to read line");
+use std::fs::OpenOptions;
+use std::io::prelude::*;
+use std::fs::File;
+/*pub fn //append_error(text: String) -> std::io::Result<()> {
+	let mut error = OpenOptions::new()
+            .read(true)
+            .write(true)
+			.append(true)
+            .create(true)
+            .open("error.log")?;
+	writeln!(error,"{}\n\n",text);
+	Ok(())
+}*/
+/*
+extracts the date from HTML file for whole age group
 
-		let ans:String = ans.to_lowercase().split_whitespace().collect();
-		for x in 0..answers.len(){
-			let comp:String = answers[x].to_lowercase().split_whitespace().collect();
-			if ans == comp{
-				let ans = answers[x].split_whitespace().collect();
-				return ans;
-			}
-		}
-		println!("Invaild answer");
+*/
+pub fn get_data(path: &str) -> Vec<Vec<Vec<String>>>{
+	let data: String = fs::read_to_string(path).unwrap().replace("\r\n","\n");
+	let remove_find = Regex::new(r"</?font.*?>").unwrap();
+	//append_error(path.to_string());
+	let cleaned_data = remove_find.replace_all(&data,"");
+		lazy_static! {
+		//regexi za uzimanje podataka i sortiranje njih
+		//vjetar
+    	static ref WIND_DATA: Regex = Regex::new(r" ([+-]?\d,\d) ").unwrap();	
+		static ref EXTRACT_DISCIPLINE: Regex = Regex::new(r"(?u)<b>([^\n]*) / [^\n]* - ([\p{L}\d (),.=-]*)(?: / [\p{L}\d ,.()=]*)?</b>\n([\p{L}(-; \n]*)").unwrap();
+		static ref SINGLE_EXTRACT: Regex = Regex::new(r"(\d{0,2}[;:]?\d{0,2}:?\d+,\d{1,2}|\d*[;:]*\d*:\d+) +([+-]{0,1}\d,\d)? +([-\p{L} -]+?) +(\d{2}.\d{2}.\d{4}|\d{4})? ([\p{L}\d-]+?)? +([\p{L},/ .-]+?) +(\d{2}.\d{2}.\d{4})").unwrap();
+		static ref RALLY_EXTRACT: Regex = Regex::new(r"(\d*:*\d+,\d{1,2}) +([\p{L} ,-]+?) {2,}([\p{L},/ ]+?) +(\d{2}.\d{2}.\d{4})\s+([\p{L} -]+?) \(\d{4}\), ([\p{L} -]+?) \(\d{4}\), ([\p{L} -]+?) \(\d{4}\), ([\p{L} -]+?) \(\d{4}\)").unwrap();
+		static ref MULTI_EXTRACT: Regex = Regex::new(r"(\d{3,}) +([\d\p{L} \.-]+?) +(\d{2}.\d{2}.\d{4}|\d{4}) ([\p{L}-]{0,}) +([\p{L},/ ]+?) +((?:\d{2}[/-])?\d{2}.\d{2}.\d{4})\s+([\p{L}0-9/:+, -]+)").unwrap();
 	}
-}
-//funkcija za CLI pitanja ali maskiranje izlaza s drugim imenima
-fn CLI_question_alias(question:&str, answers:Vec<String>, alias:Vec<Vec<String>>) -> String{
-	let mut ans= "".to_string();
-	let mut answer = "".to_string();
-	println!("{}", question);
-	for x in 0..alias.len() {
-		let mut pat = String::new();
-		for y in 0..alias[x].len()-1{
-			pat.push_str(&*format!("{} or ", alias[x][y]));
-		}
-		pat.push_str(&*format!("{}", alias[x][alias[x].len()-1]));
-		println!("{}", pat);
-	}
-	let mut res = 0;
-	'main:loop{
-		let mut ans= "".to_string();
-		io::stdin()
-			.read_line(&mut ans)
-			.expect("Failed to read line");
-
-		let mut ans:String = ans.to_lowercase().split_whitespace().collect();
-		for x in 0..alias.len(){
-			for y in 0..alias[x].len() {
-				let comp:String = alias[x][y].to_lowercase().split_whitespace().collect();
-				if ans == comp {
-					res = x;
-					break 'main;
-				}
-			}
-		}
-		println!("Invaild answer");
-	}
-	answers[res].clone()
-}
-//Prikaz tablice
-fn displayTable(data: Vec<Vec<Vec<String>>>) {
-	if data[0][0][0] != "c"{
-		for x in 1..data.len() {
-			let mut table = term_table::Table::new();
-			table.max_column_width = 60;
-			table.style = term_table::TableStyle::extended();
-			if (data[x][0][0] == "" ||data[x][0][0] == "Multi" ||data[x][0][0] == "Single" ||data[x][0][0] == "Wind" || data[x][0][0] == "Rally" ) && data[x].len() != 1{
-				table.add_row(Row::new(vec![
-					TableCell::new_with_alignment(data[x][0][1].to_string(), data[x][1].len(), term_table::table_cell::Alignment::Center)
-				]));
-				for y in 1..data[x].len() {
-					let mut rows = Vec::new();
-					let mut added = false;
-					for z in 0..data[x][y].len() {
-						if data[x].len() > 1 {
-							if data[x][y].len() != 1 {
-								rows.push(TableCell::new(data[x][y][z].clone()));
-								added = true;
-							} else {
-								rows.push(TableCell::new_with_alignment(data[x][y][z].clone(), data[x][1].len(), term_table::table_cell::Alignment::Center));
-								added = true;
+	let mut data:Vec<Vec<Vec<String>>> = Vec::new();
+	for caps in EXTRACT_DISCIPLINE.captures_iter(&cleaned_data) {	
+		let mut res:Vec<Vec<String>> = Vec::new();
+		let mut rank = 1;
+		let v = &caps[3].split("\n").collect::<Vec<&str>>();
+		let extra_info = true; //Služi da nam kad nije bilo informacija o vjetru rečemo korisniku da nije bilo informacija s NO_WIND
+		let mut extra_mod = false; //Jer smo naisli na nema informacija o vjetru ili uz pomoć vjetra
+		let mut extra_pos = 0; //Ak jesmo na kojoj je poziciji(Prepostavka je da nema informacija o vjetru je prije nego uz pomoć vjetra tako da možemo kasnije uzimat laške ove podatke
+		let mut pos = 2;
+		
+		if WIND_DATA.is_match(&caps[3]){
+			
+			for x in v{
+				let mut temp:Vec<String> = Vec::new();		
+				if SINGLE_EXTRACT.is_match(x){
+					pos = pos + 1;
+					if !extra_mod{
+						temp.push(rank.to_string());
+						rank = rank +1;
+					}else{
+						temp.push("INVD".to_string());
+					}
+					for y in SINGLE_EXTRACT.captures_iter(x) {
+						let mut count = 0;
+						for z in y.iter(){
+							match z {
+								Some(i) => {
+									if count != 0{
+										temp.push(i.as_str().to_string());
+									}else if count == 1{
+										if !(caps[2].to_lowercase().contains("kladivo") || caps[2].to_lowercase().contains("disk") || caps[2].to_lowercase().contains("koplje") || caps[2].to_lowercase().contains("vortex")){
+											temp.push(format_result(i.as_str().to_string()));
+										}
+									}
+								},
+								None => {
+									temp.push("NO_INFO".to_string())
+								}
 							}
+							count = count + 1;
 						}
 					}
-					if added == true{
-						table.add_row(Row::new(rows));
-					}
-				}
-			}
-			println!("{}", table.render());
-		}
-	}else{
-		let mut table = term_table::Table::new();
-		table.max_column_width = 60;
-		table.style = term_table::TableStyle::extended();
-		for x in 0..data[1].len(){
-			let mut rows = Vec::new();
-			for y in 0..data[1][x].len(){
-				rows.push(TableCell::new(data[1][x][y].clone()));
-			}
-			table.add_row(Row::new(rows));
-		}
-		println!("{}", table.render());
-	}
-}
-//funkcija za spremanje
-fn saveCSV(data: Vec<Vec<Vec<String>>>){
-	let mut csv:String = String::new();
-	let mut csvtotal:String = String::new();
-	let mut first = true;
-	let mut lpos = 0;
-	csv += "sep=~\n";
-	if data[0][0][0] == ""{
-		for x in 0..data.len(){
-			if data[x].len() != 1 {
-				for y in 0..data[x].len(){
-						if y == 0 {
-							if data[x][y].len() == 2 {
-								csv += &(data[x][y][1].to_string() + "\n");
-							} else {
-								csv += &(data[x][y][1].to_string() + "~");
-								csv += &(data[x][y][2].to_string() + "\n");
-							}
-						} else {
-							for z in 0..data[x][y].len() - 1 {
-								csv += &(data[x][y][z].to_string() + "~");
-							}
-							csv += &(data[x][y][data[x][y].len() - 1].to_string() + "\n");
-						}
-					}
-			}else{
-				if first == true && data[x][0].len() == 2 && data[x][0][1].find(".csv").unwrap_or(99) != 99 {
-					lpos = x;
-					first = false;
-				}else if data[x][0].len() == 2 && data[x][0][1].find(".csv").unwrap_or(99) != 99 {
-					csvtotal += &(csv);
-					csv.clear();
-					lpos = x;
-				}
-		   	}
-		}
-		csvtotal += &(csv);
-		fs::create_dir_all("/has/export/".to_owned());
-		fs::write("/has/export/".to_owned() + &data[0][0][0].clone()+&data[1][0][1].clone() + &*"_total.csv", csvtotal.clone()).expect("Unable to write file");
-	}else if data[0][0][0] == "c"{
-		for y in 0..data[1].len(){
-				for z in 0..data[1][y].len()-1{
-					csv += &(data[1][y][z].to_string() + "~");
-				}
-				csv += &(data[1][y][data[1][y].len()-1].to_string() + "\n");
-			}
-		fs::create_dir_all("/has/export/".to_owned() + &data[1][0][0].clone() + &*"/".to_owned());
-		fs::write("/has/export/".to_owned() + &data[1][0][0].clone() + &*"/" + &data[1][0][0].clone() + &*"_career.csv", csv.clone()).expect("Unable to write file");
-	}
-}
-//uzimanje nadimka za discipline
-fn get_category_alias(category: String) -> Vec<String>{
-	let mut res = Vec::<String>::new();
-	let split = category.split("- ").collect::<Vec<_>>();
-	let mut dual = split[1].split(" / ").collect::<Vec<_>>();
-	let mut cat = split[0].split(" / ").collect::<Vec<_>>();
-	if dual.len() == 1{
-		if cat[1].replace(" ","") != "Mixed"{
-			res.push(dual[0].replace(".","").replace(" ","").replace("4x400","4x400m").replace("mm","m").replace("\r",""));
-		}else{
-			res.push(dual[0].replace(".","").replace(" ","").replace("4x","X4x").replace("4x400","4x400m").replace("mm","m").replace("\r",""));
-		}
-	}else{
-		res.push(dual[1].replace(".","").replace("High Jump",       "HJ" )
-		.replace("Long Jump",       "LJ" )
-		.replace("Triple Jump",     "TJ" )
-		.replace("Pole Vault",      "PV" )
-		.replace("Shot Put",       "SP" )
-		.replace("Discus Throw",    "DT" )
-		.replace("Javelin Throw",   "JT" )
-		.replace("Hammer Throw",    "HT" )
-		.replace("m Hurdles",        "mH" )
-		.replace("m Steepl.", "mSC")
-		.replace( "m Steeplechase",  "mSC")
-		.replace("m Steepl", "mSC")
-		.replace("Half Marathon",   "HM" )
-		.replace("Race Walking",  "W")
-		.replace("(Road Race)","")
-		.replace("Road","")
-		.replace(" ","")
-		.replace("000mW","kmW")
-		.replace("000W","kmW").replace("Relay","").replace("\r",""));
-		res.push(dual[1].replace("\r",""));
-		res.push(dual[0].replace("\r",""));
-	}
-	res
-}
-//modifciranje polja tako da se dota metadata i ranking
-fn modify_data(mut data: Vec<Vec<Vec<String>>>, age: String, year: String) -> Vec<Vec<Vec<String>>>{
-	data.insert(0,vec!(vec!(year.clone() , age.clone().replace(".html",".csv").replace(".htm",".csv"))));
-	for x in 0..data.len(){
-		let mut wind = false;
-		for y in 1..data[x].len(){
-			if data[x][y][0].to_lowercase().replace(" ","").find(&"uz pomoć vjetra / wind assisted".to_lowercase().replace(" ","")).unwrap_or(99) != 99 || data[x][y][0].to_lowercase().replace(" ","").find(&"nema podataka o vjetru / no wind information".to_lowercase().replace(" ","")).unwrap_or(99) != 99{
-				wind = true;
-				continue;
-			}
-			if wind == false{
-				data[x][y].insert(0, y.to_string());
-			}else{
-				data[x][y].insert(0, "Invaild".to_string());
-			}
-		}
-		if data[x][0][0] == "Single" || data[x][0][0] == "Multi" {
-			data[x].insert(1, vec!("Rank".to_string(),"Result".to_string(),"Name".to_string(),"Birthday".to_string(),"Club".to_string(),"City".to_string(),"Date".to_string()));
-		} else if data[x][0][0] == "Wind" {
-			data[x].insert(1, vec!( "Rank".to_string(),"Result".to_string(),"Wind".to_string(),"Name".to_string(),"Birthday".to_string(),"Club".to_string(),"City".to_string(),"Date".to_string()));
-		} else if data[x][0][0] == "Rally"{
-			data[x].insert(1, vec!("Rank".to_string(),"Result".to_string(),"Team".to_string(),"City".to_string(),"Date".to_string(),"1st runner".to_string(),"2nd runner".to_string(),"3rd runner".to_string(),"4th runner".to_string()));
-		}
-		for y in 2..data[x].len(){
-			if data[x][y].len() > 4{		
-				let mut result:f64 = 0.0;
-				let stemp = data[x][y][1].replace(";",":");
-				let minutes = stemp.split(":").collect::<Vec<_>>();
-				if minutes.len() == 1{
-					result = minutes[0].replace(",",".").parse::<f64>().unwrap();
-				}else if minutes.len() == 2{
-					result = minutes[0].parse::<f64>().unwrap()*60.0+minutes[1].replace(",",".").parse::<f64>().unwrap();
+					res.push(temp.clone());
+					temp.clear();
 				}else{
-					result = minutes[0].parse::<f64>().unwrap()*60.0*60.0+minutes[1].parse::<f64>().unwrap()*60.0+minutes[2].replace(",",".").parse::<f64>().unwrap();
-				}
-				if data[x][0][0] != "Multi" {
-					data[x][y][1] = format_result(result);
+					if x.contains("/"){
+						if extra_mod == true{
+							pos = pos + 1;
+						}
+						temp.push(x.to_string());
+						res.push(temp.clone());
+						temp.clear();
+						extra_mod = true;
+						extra_pos = pos;
+					}else{
+						if x != &"" && (!x.contains("(") || !x.contains(")")){
+							//append_error(x.to_string());
+						}
+					}
 				}
 			}
+			if res.len() > 0 {
+				if res[0].len() > 1{
+					res.insert(0,vec!(res[0][7][res[0][7].len()-4..res[0][7].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][7][res[0][7].len()-4..res[0][7].len()]+"/"),""),(&caps[2]).to_string(),"wind".to_string(),extra_pos.to_string()));
+				}
+			}
+		}else if !(MULTI_EXTRACT.is_match(&caps[3]) || RALLY_EXTRACT.is_match(&caps[3])){
+			for x in v{
+				let mut temp:Vec<String> = Vec::new();		
+				if SINGLE_EXTRACT.is_match(x){
+					pos = pos + 1;
+					if !extra_mod{
+						temp.push(rank.to_string());
+						rank = rank +1;
+					}else{
+						temp.push("INVD".to_string());
+					}
+					for y in SINGLE_EXTRACT.captures_iter(x) {
+						let mut first = false;
+						for z in y.iter(){
+							if first{
+								match z {
+									Some(i) => {
+										temp.push(i.as_str().to_string());
+									},
+									None => (temp.push("NO_INFO".to_string()))
+								}
+							}else{
+								first = true;
+							}
+						}
+					}
+					res.push(temp.clone());
+					temp.clear();
+				}else{
+					if x.contains("/"){
+						if extra_mod == true{
+							pos = pos + 1;
+						}
+						temp.push(x.to_string());
+						res.push(temp.clone());
+						temp.clear();
+						extra_mod = true;
+						extra_pos = pos;
+					}else{
+						if x != &"" && (!x.contains("(") || !x.contains(")")){
+							//append_error(x.to_string());
+						}
+					}
+				}
+			}
+			if res.len() > 0{
+				if res[0].len() > 1{
+					res.insert(0,vec!(res[0][7][res[0][7].len()-4..res[0][7].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][7][res[0][7].len()-4..res[0][7].len()]+"/"),""),(&caps[2]).to_string(),"single".to_string(),extra_pos.to_string()));
+				}
+			}
+		}else if MULTI_EXTRACT.is_match(&caps[3]) || RALLY_EXTRACT.is_match(&caps[3]){
+			//println!("ooooooooooooooooooooooooooooooooooooo");
+			let multi_line = Regex::new(r"(?um)(?:\d*:*\d+,\d{1,2}|\d+).+\n.+").unwrap();
+			for t in multi_line.captures_iter(&caps[3]) {
+				let mut temp:Vec<String> = Vec::new();		
+				for x in t.iter(){
+					let x = x.unwrap();
+					//println!("{}", x.as_str());
+					//println!("_____________________________________");
+					if MULTI_EXTRACT.is_match(x.as_str()){
+						for y in MULTI_EXTRACT.captures_iter(x.as_str()) {
+							temp.push(rank.to_string());
+							rank = rank +1;
+							let mut first = false;
+							for z in y.iter(){
+								if first{
+									match z {
+										Some(i) => {
+											temp.push(i.as_str().to_string());
+										},
+										None => (temp.push("NO_INFO".to_string()))
+									}
+								}else{
+									first = true;
+								}
+							}
+						}
+						res.push(temp.clone());
+						temp.clear();
+					}else if RALLY_EXTRACT.is_match(x.as_str()){
+						for y in RALLY_EXTRACT.captures_iter(x.as_str()) {
+							temp.push(rank.to_string());
+							rank = rank +1;
+							let mut first = false;
+							for z in y.iter(){
+								if first{
+									match z {
+										Some(i) => {
+											temp.push(i.as_str().to_string());
+										},
+										None => (temp.push("NO_INFO".to_string()))
+									}
+								}else{
+									first = true;
+								}
+							}
+							res.push(temp.clone());
+							temp.clear();
+						}
+					}else{
+						if x.as_str() != "" && (!x.as_str().contains("(") || !x.as_str().contains(")")){
+							//append_error(x.as_str().to_string());
+						}
+					}			
+				}
+			}
+			if RALLY_EXTRACT.is_match(&caps[3]){
+				if !&caps[1].contains("mješovita"){
+					res.insert(0,vec!(res[0][4][res[0][4].len()-4..res[0][4].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][4][res[0][4].len()-4..res[0][4].len()]+"/"),""),(&caps[2]).to_string(),"rally".to_string(),"".to_string()));
+				}else{
+					res.insert(0,vec!(res[0][4][res[0][4].len()-4..res[0][4].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][4][res[0][4].len()-4..res[0][4].len()]+"/"),""),"X".to_string()+&(&caps[2]).to_string(),"rally".to_string(),"".to_string()));
+				}
+			}else if MULTI_EXTRACT.is_match(&caps[3]){
+				res.insert(0,vec!(res[0][6][res[0][6].len()-4..res[0][6].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][6][res[0][6].len()-4..res[0][6].len()]+"/"),""),(&caps[2]).to_string(),"multi".to_string(),extra_pos.to_string()));
+			}
+		}else{
+			//append_error(caps[3].to_string());
 		}
+		data.push(res.clone());
+		res.clear();
 	}
 	data
 }
-//cleanup of data
-fn clean_data(data: Vec<Vec<Vec<String>>>) -> Vec<Vec<Vec<String>>>{
-	let mut res: Vec<Vec<Vec<String>>> = Vec::new();
-	for x in 0..data.len(){
-		if data[x].len() > 1{
-			res.push(data[x].clone());
-		}
-	}
-	res
-}
-//uzimanje profila atleticra u jednoj godini
-fn get_single_profile(data: Vec<Vec<Vec<String>>>, name: String) -> Vec<Vec<String>>{
-	let mut temp = searchName(data.clone(), name.clone());
-	let mut res:Vec<Vec<Vec<String>>> = Vec::new();
-	let mut export:Vec<Vec<String>> = Vec::new();
-	if data.len() != 0{
-		res.insert(0,data[0].clone());
-		let mut rally = true;
-		for x in 0..temp.len(){
-			if temp[x][0][0] != "Rally"{
-				rally = false;
-			}
-		}
-		let mut names:Vec<Vec<String>> = Vec::new();
-		for x in 0..temp.len(){
-			if temp[x][0][0] == "Single" || temp[x][0][0] == "Multi" {
-				let s = temp[x][1][2].clone().replace(" ","_");
-				let s = s + "__";
-				let s = s.replace("___","").replace("__","").replace("_"," ");
-				names.push(vec!(s.clone(),temp[x][1][3][temp[x][1][3].len()-4..temp[x][1][3].len()].to_string()));
-			} else if temp[x][0][0] == "Wind" {
-				let s = temp[x][1][3].clone().replace(" ","_");
-				let s = s + "__";
-				let s = s.replace("___","").replace("__","").replace("_"," ");
-				names.push(vec!(s.clone(),temp[x][1][4][temp[x][1][4].len()-4..temp[x][1][4].len()].to_string()));
-			} else if temp[x][0][0] == "Rally"{
-				if temp[x][1][5].to_lowercase().find(&name.to_lowercase().clone()).unwrap_or(99) != 99 {
-					names.push(vec!(temp[x][1][5][0..temp[x][1][5].len()-7].to_string().clone(),temp[x][1][5][temp[x][1][5].len()-5..temp[x][1][5].len()-1].to_string()));
-				} else
-				if temp[x][1][6].to_string().find(&name.to_lowercase().clone()).unwrap_or(99) != 99 {
-					names.push(vec!(temp[x][1][6][0..temp[x][1][6].len()-7].to_string().clone(),temp[x][1][6][temp[x][1][6].len()-5..temp[x][1][6].len()-1].to_string()));
-				} else
-				if temp[x][1][7].to_lowercase().find(&name.to_lowercase().clone()).unwrap_or(99) != 99 {
-					names.push(vec!(temp[x][1][7][0..temp[x][1][7].len()-7].to_string().clone(),temp[x][1][7][temp[x][1][7].len()-5..temp[x][1][7].len()-1].to_string()));
-				} else
-				if temp[x][1][8].to_lowercase().find(&name.to_lowercase().clone()).unwrap_or(99) != 99 {
-					names.push(vec!(temp[x][1][8][0..temp[x][1][8].len()-7].to_string().clone(),temp[x][1][8][temp[x][1][8].len()-5..temp[x][1][8].len()-1].to_string()));
-				}
-			}
-		}
-		
-		let set : HashSet<_> = names.drain(..).collect();
-		names.extend(set.into_iter());
-		let mut last:Vec<String> = Vec::new();
-		let mut offset = 0;
-		if names.len() != 0{
-			for y in 0..temp.len(){
-				if temp[y].len() == 1 && temp[y][0][0] != ""{
-					last.clear();
-					last.push(temp[y][0][0].clone());
-					last.push(temp[y][0][1].clone());	
-					res.push(vec!(vec!(temp[y][0][0].clone(),names[0][0].clone())));
-					offset = offset + 1;
-				}
-				if (temp[y][0][0] == "Single" || temp[y][0][0] == "Multi" || temp[y][0][0] == "Rally" || temp[y][0][0] == "Wind"){
-					let age_data = get_age_data(last[1].clone(),last[0].clone()).replace("fo","").replace("fi"," Indoor").replace("mo","").replace("mi"," Indoor");
-					let mut result:f64 = 0.0;
-					let stemp = temp[y][1][1].replace(";",":");
-					let minutes = stemp.split(":").collect::<Vec<_>>();
-					if minutes.len() == 1{
-						result = minutes[0].replace(",",".").parse::<f64>().unwrap();
-					}else if minutes.len() == 2{
-						result = minutes[0].parse::<f64>().unwrap()*60.0+minutes[1].replace(",",".").parse::<f64>().unwrap();
-					}else{
-						result = minutes[0].parse::<f64>().unwrap()*60.0*60.0+minutes[1].parse::<f64>().unwrap()*60.0+minutes[2].replace(",",".").parse::<f64>().unwrap();
-					}
-					if temp[y][0][0] == "Single" || temp[y][0][0] == "Multi" {
-						let s = temp[y][1][2].clone().replace(" ","_");
-						let s = s + "__";
-						let s = s.replace("___","").replace("__","").replace("_"," ");
-						if names[0][0] == s{
-							res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone() + &age_data.clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-						}
-					}else if temp[y][0][0] == "Wind" {
-						let s = temp[y][1][3].clone().replace(" ","_");
-						let s = s + "__";
-						let s = s.replace("___","").replace("__","").replace("_"," ");
-						if names[0][0] == s{
-							if temp[y][1][0] != "Invalid"{
-								res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone() + &age_data.clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-							}	
-						}				
-					}else if temp[y][0][0] == "Rally"{
-						let name = names[0][0].clone() + &" (".to_string() + &names[0][1].clone() + &")".to_string();
-						if temp[y][1][5].to_lowercase() == name.to_lowercase() {
-							res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone() + &age_data.clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-						} else
-						if temp[y][1][6].to_lowercase() == name.to_lowercase() {
-							res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone() + &age_data.clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-						} else
-						if temp[y][1][7].to_lowercase() == name.to_lowercase() {
-							res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone() + &age_data.clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-						} else
-						if temp[y][1][8].to_lowercase() == name.to_lowercase() {
-							res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone() + &age_data.clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-						}
-					}					
-				}
-			}
-			let mut discip:Vec<String> = Vec::new();
-			for x in res.clone(){
-				for y in x{
-					if y.len() > 2{
-						if discip.len() == 0{
-							discip.push(y[0].clone());
-							export.push(y.clone());
+/*
+gets results for single year for athlete
+*/
+pub fn get_profile(data:Vec<Vec<Vec<String>>>, search: String) -> Vec<Vec<String>>{
+	let mut res:Vec<Vec<String>> = Vec::new();
+	let mut extra_mod = false;
+	let mut bday = "".to_string();
+	for discip in data.clone(){
+		let mut extra_mod = false;
+		for mut x in 1..discip.len(){
+			if discip[x].len() > 1 && discip[0].len() > 1{
+				let discipline_text = cleanup_discipline(discip[0][2].clone());
+				if discip[0][3] == "wind" || discip[0][3] == "single"{
+					if discip[x][3].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase(){
+						bday = discip[x][4][discip[x][4].len()-4..discip[x][4].len()].to_string().clone();
+						if !extra_mod{
+							if data[0][0][1].clone().contains("d.html"){
+								res.push(vec!(discipline_text.clone()+" D",discip[x][1].clone(),discip[x][2].clone(),discip[x][0].clone(),calculate_points(get_result(discip[x][1].clone()),discip[0][2].clone(),data[0][0][1].clone(),data[0][0][0].clone())));
+							}else{						
+								res.push(vec!(discipline_text.clone(),discip[x][1].clone(),discip[x][2].clone(),discip[x][0].clone(),calculate_points(get_result(discip[x][1].clone()),discip[0][2].clone(),data[0][0][1].clone(),data[0][0][0].clone())));
+							}
+							if discip[0][4].parse::<usize>().unwrap() != 0{
+								x = discip[0][4].parse::<usize>().unwrap();
+								extra_mod = true;
+							}else{
+								break;
+							}
 						}else{
-							let mut found = false;
-							for d in discip.clone() {
-								if d == y[0]{
-									found = true;
-								}
+							res.push(vec!(discipline_text.clone()+" IR",discip[x][1].clone(),discip[x][2].clone(),discip[x][0].clone(),"0".to_string()));
+							break;
+							
+						}
+					}
+				}else if discip[0][3] == "rally"{
+					if discip[x][5].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase() || discip[x][6].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase() || discip[x][7].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase() || discip[x][8].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase(){
+						if data[0][0].len() > 1{
+							if data[0][0][1].clone().contains("d.html"){
+								res.push(vec!(discipline_text.clone()+" D",discip[x][1].clone(),"NO_INFO".to_string(),discip[x][0].clone(),calculate_points(get_result(discip[x][1].clone()),discip[0][2].clone(),data[0][0][1].clone(),data[0][0][0].clone())));
+							}else{
+								res.push(vec!(discipline_text.clone(),discip[x][1].clone(),"NO_INFO".to_string(),discip[x][0].clone(),calculate_points(get_result(discip[x][1].clone()),discip[0][2].clone(),data[0][0][1].clone(),data[0][0][0].clone())));
 							}
-							if found == false{
-								discip.push(y[0].clone());
-								export.push(y.clone());
-							}
+						}
+					}
+				}else if discip[0][3] == "multi"{
+					if discip[x][2].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase(){
+						if data[0][0][1].clone().contains("d.html"){
+							res.push(vec!(discipline_text.clone()+" D",discip[x][1].clone(),"NO_INFO".to_string(),discip[x][0].clone(),calculate_points(get_result(discip[x][1].clone()),discip[0][2].clone(),data[0][0][1].clone(),data[0][0][0].clone())));
+						}else{
+							res.push(vec!(discipline_text.clone(),discip[x][1].clone(),"NO_INFO".to_string(),discip[x][0].clone(),calculate_points(get_result(discip[x][1].clone()),discip[0][2].clone(),data[0][0][1].clone(),data[0][0][0].clone())));
 						}
 					}
 				}
 			}
-			export.insert(0,res[1][0].clone());
 		}
 	}
-	export
-}
-//uzimanje profila atleticra u jednoj godini
-fn get_profile(data: Vec<Vec<Vec<String>>>, name: String) -> Vec<Vec<Vec<String>>>{
-	let mut temp = searchName(data.clone(), name.clone());
-	let mut res:Vec<Vec<Vec<String>>> = Vec::new();
-	if data.len() != 0{
-	res.insert(0,data[0].clone());
-	let mut rally = true;
-	for x in 0..temp.len(){
-		if temp[x][0][0] != "Rally"{
-			rally = false;
-		}
-	}
-	let mut names:Vec<Vec<String>> = Vec::new();
-	for x in 0..temp.len(){
-		if temp[x][0][0] == "Single" || temp[x][0][0] == "Multi" {
-			let s = temp[x][1][2].clone().replace(" ","_");
-			let s = s + "__";
-			let s = s.replace("___","").replace("__","").replace("_"," ");
-			println!("{}",temp[x][1][3].len());
-			names.push(vec!(s.clone(),temp[x][1][3][temp[x][1][3].len()-4..temp[x][1][3].len()].to_string()));
-		} else if temp[x][0][0] == "Wind" {
-			let s = temp[x][1][3].clone().replace(" ","_");
-			let s = s + "__";
-			let s = s.replace("___","").replace("__","").replace("_"," ");
-			names.push(vec!(s.clone(),temp[x][1][4][6..10].to_string()));
-		} else if temp[x][0][0] == "Rally"{
-			if temp[x][1][5].to_lowercase().find(&name.to_lowercase().clone()).unwrap_or(99) != 99 {
-				names.push(vec!(temp[x][1][5][0..temp[x][1][5].len()-7].to_string().clone(),temp[x][1][5][temp[x][1][5].len()-5..temp[x][1][5].len()-1].to_string()));
-			} else
-			if temp[x][1][6].to_string().find(&name.to_lowercase().clone()).unwrap_or(99) != 99 {
-				names.push(vec!(temp[x][1][6][0..temp[x][1][6].len()-7].to_string().clone(),temp[x][1][6][temp[x][1][6].len()-5..temp[x][1][6].len()-1].to_string()));
-			} else
-			if temp[x][1][7].to_lowercase().find(&name.to_lowercase().clone()).unwrap_or(99) != 99 {
-				names.push(vec!(temp[x][1][7][0..temp[x][1][7].len()-7].to_string().clone(),temp[x][1][7][temp[x][1][7].len()-5..temp[x][1][7].len()-1].to_string()));
-			} else
-			if temp[x][1][8].to_lowercase().find(&name.to_lowercase().clone()).unwrap_or(99) != 99 {
-				names.push(vec!(temp[x][1][8][0..temp[x][1][8].len()-7].to_string().clone(),temp[x][1][8][temp[x][1][8].len()-5..temp[x][1][8].len()-1].to_string()));
-			}
-		}
-	}
-
-	let set : HashSet<_> = names.drain(..).collect();
-    names.extend(set.into_iter());
-	let mut last:Vec<String> = Vec::new();
-	let mut offset = 0;
-	for x in 0..names.len(){
-		for y in 0..temp.len(){
-			if temp[y].len() == 1 && temp[y][0][0] != ""{
-				last.clear();
-				last.push(temp[y][0][0].clone());
-				last.push(temp[y][0][1].clone());	
-				res.push(vec!(vec!("".to_string(),names[x][0].clone() + " " + get_age_alias(temp[y][0][1].clone(),temp[y][0][0].clone())[0].replace(".csv","").as_str())));
-				offset = offset + 1;
-			}
-			if (temp[y][0][0] == "Single" || temp[y][0][0] == "Multi" || temp[y][0][0] == "Rally" || temp[y][0][0] == "Wind"){
-				
-				let mut result:f64 = 0.0;
-				let stemp = temp[y][1][1].replace(";",":");
-				let minutes = stemp.split(":").collect::<Vec<_>>();
-				if minutes.len() == 1{
-					result = minutes[0].replace(",",".").parse::<f64>().unwrap();
-				}else if minutes.len() == 2{
-					result = minutes[0].parse::<f64>().unwrap()*60.0+minutes[1].replace(",",".").parse::<f64>().unwrap();
-				}else{
-					result = minutes[0].parse::<f64>().unwrap()*60.0*60.0+minutes[1].parse::<f64>().unwrap()*60.0+minutes[2].replace(",",".").parse::<f64>().unwrap();
-				}
-				if temp[y][0][0] == "Single" || temp[y][0][0] == "Multi" {
-					let s = temp[y][1][2].clone().replace(" ","_");
-					let s = s + "__";
-					let s = s.replace("___","").replace("__","").replace("_"," ");
-					if names[x][0] == s{
-						res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-					}
-				}else if temp[y][0][0] == "Wind" {
-					let s = temp[y][1][3].clone().replace(" ","_");
-					let s = s + "__";
-					let s = s.replace("___","").replace("__","").replace("_"," ");
-					if names[x][0] == s{
-						if temp[y][1][0] != "Invalid"{
-							res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));					
-						}	
-					}				
-				}else if temp[y][0][0] == "Rally"{
-					let name = names[x][0].clone() + &" (".to_string() + &names[x][1].clone() + &")".to_string();					
-					if temp[y][1][5].to_lowercase() == name.to_lowercase() {
-						res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));				
-					} else
-					if temp[y][1][6].to_lowercase() == name.to_lowercase() {
-						res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-					} else
-					if temp[y][1][7].to_lowercase() == name.to_lowercase() {
-						res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-					} else
-					if temp[y][1][8].to_lowercase() == name.to_lowercase() {
-						res[offset].push(vec!(get_category_alias(temp[y][0][1].clone())[0].clone(),temp[y][1][0].clone(),temp[y][1][1].clone(),calculate_points(result.clone(),get_category_alias(temp[y][0][1].clone())[0].clone(),last[1].clone(),last[0].clone())));
-					}
-				}
-			}
-		}
-	}
-	}
-	for x in 0..res.len(){
-		res[x].insert(1,vec!("Discipline".to_string(),"Rank".to_string(),"Result".to_string(),"Iaaf Points".to_string()));
-	}
-	res
-}
-//https://github.com/GlaivePro/IaafPoints/blob/master/LICENSE.md
-//uzimanje magicnih brojeva iz csv-a tako da se moze izracunati IAAF-ovi (WA) bodovi
-fn get_magic_numbers(discip: String, age: String, year: String) -> Vec<String>{
-	let contents = fs::read_to_string("magicnumbers.csv")
-    .expect("Something went wrong reading the file");
-	let mut array = Vec::new();
-	let mut search = get_age_data(age,year);
-	search = search + &discip;
-	for x in contents.split("\n"){
-		array.push(x.split(",").collect::<Vec<_>>());
-	}
-	let mut res = Vec::new();
-	for x in array{
-		if search.to_lowercase() == x[0].to_lowercase(){
-			for y in x{
-				res.push(y.to_string());
-			}
-			break;
-		}
-	}
-	res
-}
-//izracunjavanje IAAF-ovih bodovav
-fn calculate_points(result: f64, discip: String, age: String, year: String)-> String{
-	let magic = get_magic_numbers(discip, age, year);
-	let mut points:f64 = 0.0;
-	if magic.len() == 4{
-		let resultShift:f64 = magic[1].parse().unwrap();
-		let conversionFactor:f64 = magic[2].parse().unwrap();
-		let pointShift:f64 = magic[3].parse().unwrap();
-		points = conversionFactor * (result + resultShift).powf(2.0) + pointShift;
-		points = points.floor();
-	}
-	points.to_string()
-}
-
-fn save_cache(year: String){
-	for age in get_ages_net(year.clone()){
-		fs::create_dir_all("/has/cache/".to_owned() + &year.clone());
-		let url = "https://www.has.hr/images/stories/HAS/tabsez/".to_owned() + &year.clone() + "/" + &age.clone();
-		let res = reqwest::blocking::get(&url.clone()).unwrap();
-		let data = res.text_with_charset("windows-1250").unwrap();
-		fs::write(&*("/has/cache/".to_owned() + &year.clone() + "/" + &age.clone().replace("html","htm").replace("htm","html")),data.clone()).expect("Unable to write file");
-	}
-}
-fn format_result(result:f64) -> String{
-	let h = (result/(60.00*60.00));
-	let h = h.floor();
-	let min = ((result%(60.00*60.00))/60.00).floor();
-	let sec = result%60.00;
-	let sec = ((sec*100.00).round())/100.00;
-	let mut sresult = "".to_string();
-	if h == 0.00{
-		if min != 0.00{
-			if sec != 0.00{
-				if sec >= 10.00{
-					sresult = format!("{}:{:.2}",min,sec);
-				}else{
-					sresult = format!("{}:0{:.2}",min,sec);
-				}
-			}else{
-				sresult = format!("{}:00,00",min);
-			}
+	if res.len() >= 1 {
+		if res[0].len() > 1{
+			res.insert(0,vec!("Discipline".to_string(),"Mark".to_string(),"Wind".to_string(),"Rank".to_string(),"WA points".to_string()));
+			res.insert(0,vec!(data[0][0][0].clone() ,data[0][0][1].clone(),search,bday));
+			return res;
 		}else{
-			sresult = format!("{:.2}",sec);
+			vec!(vec!("empty".to_string()))	
 		}
 	}else{
-		if min != 0.00{
-			if min >= 10.00{
-				if sec != 0.00{
-					if sec >= 10.00{
-						sresult = format!("{}:{}:{:.2}",h,min,sec);
-					}else{
-						sresult = format!("{}:{}:0{:.2}",h,min,sec);
-					}
-				}else{
-					sresult = format!("{}:{}:00,00",h,min);
-				}
-			}else{
-				if sec != 0.00{
-					if sec >= 10.00{
-						sresult = format!("{}:0{}:{:.2}",h,min,sec);
-					}else{
-						sresult = format!("{}:0{}:0{:.2}",h,min,sec);
-					}
-				}else{
-					sresult = format!("{}:0{}:00,00",h,min);
-				}
-			}
-		}else{
-			if sec >= 10.00{
-				sresult = format!("{}:00:{:.2}",h,sec);
-			}else{
-				sresult = format!("{}:00:0{:.2}",h,sec);
-			}
-		}
-	}
-	sresult.replace(".",",")
-}
-fn init_cache(){
-	let paths = fs::read_dir("/has/").unwrap();
-	let b: bool = Path::new("/has/cache").is_dir();
-	if b == false{
-		let years = get_years_net();
-		for year in years {
-			save_cache(year);
-		}
-	}else{
-		let years = get_years_net();
-		if years[0] != "Failed"{	
-			//save_cache(years[years.len()-1].clone());
-		}
+		vec!(vec!("empty".to_string()))
 	}
 }
-fn get_carrer_profile(search: &str) ->Vec<Vec<Vec<String>>>{
-	let m = MultiProgress::new();
-	let mut profil:Vec<Vec<Vec<String>>> = Vec::new();
+/*
+gets whole carrer of a athlete
+*/
+fn get_carrer(search: String) -> Vec<Vec<String>>{
 	let years = get_years();
 	let barYear = ProgressBar::new(years.len() as u64);
-	for year in years {
-		for age in get_ages(year.clone()){
-			
-
-			profil.push(get_single_profile(modify_data(getDataFromCache(&*("/has/cache/".to_owned() + &year.clone() + "/" + &age.clone())),age.clone(),year.clone()), search.to_string()));
-
+	/*
+	TODO optimzation to not process other gender and only revelant ages
+	*/
+	let _gender = "".to_string();
+	let _bday = 0;
+	let mut res:Vec<Vec<Vec<String>>>= Vec::new();
+	let mut discip_global:Vec<String> = Vec::new();
+	for x in 0..years.len(){
+		barYear.inc(1);		
+		let mut data:Vec<Vec<String>>;
+		let mut temp:Vec<Vec<String>> = Vec::new();
+		let mut discip:Vec<String> = Vec::new();
+		for age in get_ages(years[x].clone()){
+			data = get_profile(get_data(&("/has/cache/".to_owned() + &years[x].clone() + "/" + &age.clone())), search.clone());
+			if data.len() != 1{
+				if data[0][0] != "empty"{
+					for d in 2..data.len(){
+						let mut found = false;
+						for dis in discip.clone(){
+							if dis == data[d][0]{
+								found = true;
+								break;
+							}
+							
+						}
+						if !found{
+							discip.push(data[d][0].clone());
+							temp.push(vec!(data[d][0].clone(),data[d][1].clone(),data[d][4].clone()));
+						}else{
+							for x in 0..temp.len(){
+								if temp[x][0] == data[d][0]{
+									if !(data[d][0].to_lowercase().contains("kladivo") || data[d][0].to_lowercase().contains("disk") || data[d][0].to_lowercase().contains("koplje") || data[d][0].to_lowercase().contains("vortex") || data[d][0].to_lowercase().contains("boj") || data[d][0].to_lowercase().contains("athlon")){
+										if get_result(temp[x][1].clone()) > get_result(data[d][1].clone()){
+											temp.remove(x);
+											temp.insert(0,vec!(data[d][0].clone(),data[d][1].clone(),data[d][4].clone()));
+										}
+									}else{
+										if get_result(temp[x][1].clone()) <	 get_result(data[d][1].clone()){
+											temp.remove(x);
+											temp.insert(0,vec!(data[d][0].clone(),data[d][1].clone(),data[d][4].clone()));
+										}
+									}
+								}									
+							}
+						}
+					}
+				}
+			}
+		}	
+		if temp.len() > 0{
+			for d in discip {
+				let mut found = false;
+				for t in &discip_global{
+					if t == &d{
+						found = true;
+					}
+				}
+				if !found{
+					discip_global.push(d.clone());
+				}
+			} 
+			temp.insert(0,vec!(years[x].clone()));
+			res.push(temp);
+		}
+	}			
+	barYear.finish();
+	let mut carrer:Vec<Vec<Vec<String>>> = Vec::new();
+	for x in res.clone(){
+		let mut temp:Vec<Vec<String>> = Vec::new();
+		for d in discip_global.clone(){
+			let mut found = false;
+			let mut result = "".to_string();
+			let mut points = "".to_string();
+			for y in x.clone(){
+				if d == y[0]{
+					found = true;
+					result = y[1].clone();
+					points = y[2].clone();
+					break;
+				}
+			}
+			if found{
+				temp.push(vec!(d.clone(),result,points));
+			}else{
+				temp.push(vec!(d.clone(),"x".to_string(),"0".to_lowercase()));
+			}
+		}
+		temp.insert(0,vec!(x[0][0].clone()));
+		carrer.push(temp.clone());
+	}
+	let mut results:Vec<f64> = Vec::new();
+	let mut res:Vec<Vec<String>> = Vec::new();
+	for d in discip_global{
+		let mut temp:Vec<String> = Vec::new();
+		temp.push(d.clone());
+		let mut pb = 0.0;
+		let mut points = "".to_string();
+		for x in carrer.clone(){
+			for y in x{
+				if y[0] == d{
+					temp.push(y[1].clone());
+					if y[1] != "x".to_string(){
+						let result = get_result(y[1].clone());
+						if y[0].clone().contains("m") || y[0].clone().contains("x") || y[0].clone().contains("0") || y[0].clone().contains("Ma"){
+							if pb > result{
+								pb = result;
+								points = y[2].clone();
+							}else if pb == 0.0{
+								pb = result;
+								points = y[2].clone();
+							}
+						}else{
+							if pb < result{
+								pb = result;
+								points = y[2].clone();
+							}					
+						}
+					}
+					break;
+					
+				}
+			}
+		}
+		results.push(pb);
+		if !(d.to_lowercase().contains("kladivo") || d.to_lowercase().contains("disk") || d.to_lowercase().contains("koplje") || d.to_lowercase().contains("vortex") || d.to_lowercase().contains("boj")){
+			temp.push(calculate_result(pb));
+		}else{
+			temp.push(pb.to_string().replace(".",","));
+		}
+		temp.push(points);
+		res.push(temp);
+	}
+	let mut removed = 0; 
+	let mut technical:Vec<Vec<String>> = Vec::new();
+	for x in 0..res.len(){
+		if (!res[x-removed][0].contains("m") && !res[x-removed][0].contains("x")&& !res[x-removed][0].contains("0")&& !res[x-removed][0].contains("Ma") || res[x-removed][0].contains("g")) || res[x-removed][0].contains("boj"){
+			technical.push(res[x-removed].clone());
+			res.remove(x-removed);
+			removed = removed + 1;
+		}
+	}
+	let mut min = 0;
+	if res.len() > 1{
+		for x in 0..res.len()-1{
+			min = x;
+			for y in (x+1)..res.len(){
+				if get_result(res[y][res[y].len()-2].clone()) < get_result(res[min][res[min].len()-2].clone()) {
+					min = y;
+				}
+			}	
+			let temp = res[min].clone();
+			res[min] = res[x].clone();
+			res[x] = temp;		
+		}
+	}
+	for x in 0..technical.len(){
+		min = x;
+		for y in (x+1)..technical.len(){
+			if get_result(technical[y][technical[y].len()-2].clone()) < get_result(technical[min][technical[min].len()-2].clone()) {
+				min = y;
+			}
+		}	
+		let temp = technical[min].clone();
+		technical[min] = technical[x].clone();
+		technical[x] = temp;
+	}
+	for x in 0..technical.len(){
+		res.push(technical[x].clone());
+	}
+	let mut temp:Vec<String> = Vec::new(); 
+	temp.push(search.clone());
+	for x in carrer{
+		temp.push(x[0][0].clone());
+	}
+	temp.push("PB".to_string());
+	temp.push("WA points".to_string());
+	res.insert(0,temp.clone());
+	res
+}
+/*
+Function for getting clubs statistics
+gets every result and calculates the points for it and sorts it from highest to lowest
+*/
+fn get_stats(year: String) -> Vec<Vec<String>>{
+	let mut stats: Vec<Vec<String>> = Vec::new();
+	let mut rally: Vec<Vec<String>> = Vec::new();
+	let mut rallyCount: i32 = 0;
+	let mut bests: Vec<i32> = Vec::new();
+	let barYear = ProgressBar::new(get_ages(year.clone()).len() as u64);
+	for age in get_ages(year.clone()){
+		let data = get_data(&("/has/cache/".to_owned() + &year.clone() + "/" + &age.clone()));
+		let mut sufix = "";
+		if age.clone().contains("d.html"){
+			sufix = " D";
+		}
+		for discip in data.clone(){
+			for x in 1..discip.len(){
+				if discip[x].len() > 1 && discip[0].len() > 1 {
+					if discip[0][3] == "wind"{
+						if x == discip[0][4].parse::<usize>().unwrap(){
+							break;
+						}
+					}
+					if discip[x][5] == "AGR" || discip[x][2] == "AGRAM, ZAGREB" || discip[x][4] == "AGR"{
+						let points = calculate_points(get_result(discip[x][1].clone()),discip[0][2].clone(),data[0][0][1].clone(),data[0][0][0].clone()).parse::<i32>().unwrap();
+						if points != 0{
+							if discip[0][3] == "wind" || discip[0][3] == "single"{
+								if stats.len() != 0{
+									let mut find = false;
+									let mut pos = 0;
+									for stat in 0..stats.len(){
+										if stats[stat][1] == discip[x][3]{
+											if stats[stat][0].clone() == discip[0][2].clone()+sufix.clone(){
+												find = true;
+												pos = stat;
+												break;
+											}
+										}
+									}
+									if find == true{
+										if points > bests[pos]{
+											stats.remove(pos);
+											bests.remove(pos);
+											stats.push(vec!(discip[0][2].clone()+sufix.clone(),discip[x][3].clone(),discip[x][1].clone(),discip[x][7].clone(),discip[x][6].clone()));
+											bests.push(points);
+										}
+									}else{
+										stats.push(vec!(discip[0][2].clone()+sufix.clone(),discip[x][3].clone(),discip[x][1].clone(),discip[x][7].clone(),discip[x][6].clone()));
+										bests.push(points);
+									}
+								}else{
+									stats.push(vec!(discip[0][2].clone()+sufix.clone(),discip[x][3].clone(),discip[x][1].clone(),discip[x][7].clone(),discip[x][6].clone()));
+									bests.push(points);
+								}									
+							}else if discip[0][3] == "rally"{
+								if rally.len() != 0{
+									let mut pos = 0;
+									let mut team = 0;
+									let mut teamCount = 0;
+									for stat in 0..stats.len(){
+										team = 0;
+										if stats[stat][1].contains("%"){
+											let i = stats[stat][1].replace("%","").parse::<usize>().unwrap();
+											if stats[stat][0].clone() == discip[0][2].clone()+sufix.clone(){
+												for e in 0..rally[i].len(){
+													let mut found = false;
+													if discip[x][e+5] == rally[i][e]{
+														found = true;
+														team = team+1;
+													}	
+													if found == false{
+														break;
+													}
+													if team == 3{
+														break;
+													}
+												}	
+												if team == 3{
+													pos = stat;
+													teamCount = i;
+													break;
+												}
+											}
+										}
+									}
+									if team == 3{
+										if points > bests[pos]{
+											stats.remove(pos);
+											bests.remove(pos);
+											stats.insert(pos, vec!(discip[0][2].clone()+sufix.clone(),teamCount.to_string()+"%",discip[x][1].clone(),discip[x][4].clone(),discip[x][3].clone()));
+											bests.insert(pos,points);
+										}
+									}else{
+										rally.push(vec!(discip[x][5].clone(),discip[x][6].clone(),discip[x][7].clone(),discip[x][8].clone()));
+										stats.push(vec!(discip[0][2].clone()+sufix.clone(),rallyCount.clone().to_string()+"%",discip[x][1].clone(),discip[x][4].clone(),discip[x][3].clone()));
+										bests.push(points);
+										rallyCount = rallyCount+1;
+									}
+								}else{
+									rally.push(vec!(discip[x][5].clone(),discip[x][6].clone(),discip[x][7].clone(),discip[x][8].clone()));
+									stats.push(vec!(discip[0][2].clone()+sufix.clone(),rallyCount.clone().to_string()+"%",discip[x][1].clone(),discip[x][4].clone(),discip[x][3].clone()));
+									bests.push(points);
+									rallyCount = rallyCount+1;
+								}
+							}else if discip[0][3] == "multi"{
+								if stats.len() != 0{
+									let mut find = false;
+									let mut pos = 0;
+									for stat in 0..stats.len(){
+										if stats[stat][1] == discip[x][3]{
+											if stats[stat][0].clone() == discip[0][2].clone()+sufix.clone(){
+												find = true;
+												pos = stat;
+												break;
+											}
+										}
+									}
+									if find == true{
+										if points > bests[pos]{
+											stats.remove(pos);
+											bests.remove(pos);
+											stats.push(vec!(discip[0][2].clone()+sufix.clone(),discip[x][2].clone(),discip[x][1].clone(),discip[x][6].clone(),discip[x][5].clone()));
+											bests.push(points);
+										}
+									}else{
+										stats.push(vec!(discip[0][2].clone()+sufix.clone(),discip[x][2].clone(),discip[x][1].clone(),discip[x][6].clone(),discip[x][5].clone()));
+										bests.push(points);
+									}
+								}else{
+									stats.push(vec!(discip[0][2].clone()+sufix.clone(),discip[x][2].clone(),discip[x][1].clone(),discip[x][6].clone(),discip[x][5].clone()));
+									bests.push(points);
+								}	
+							}
+						}
+					}
+				}
+			}
 		}
 		barYear.inc(1);		
 	}
 	barYear.finish();
-	let mut x = 0;
-	while true{
-		if profil[x].len() == 0{
-			profil.remove(x);
+	let mut min = 0;
+	for x in 0..stats.len()-1{
+		min = x;
+		for y in (x+1)..stats.len(){
+			if bests[y] > bests[min] {
+				min = y;
+			}
+		}	
+		let temp = stats[min].clone();
+		stats[min] = stats[x].clone();
+		stats[x] = temp;
+		let temp = bests[min].clone();
+		bests[min] = bests[x].clone();
+		bests[x] = temp;			
+	}
+	let mut last = 0;
+	for x in rally.clone(){	
+		println!("{:?}",x);
+	}
+	for x in 0..stats.len(){
+		if stats[x][1].contains("%"){
+			println!("{:?}",stats[x].clone());
+			let i = stats[x][1].replace("%","").parse::<usize>().unwrap();
+			let mut name = "".to_string();
+			for e in 0..rally[i].len()-1{
+				name = name + &rally[i][e].clone() + ", ";
+			}
+			name = name + &rally[i][3].clone();
+			stats[x].remove(1);
+			stats[x].insert(1, name);
+		}
+		stats[x].push(bests[x].clone().to_string());
+		if bests[x] != last{
+			stats[x].insert(0,(x+1).to_string());
 		}else{
-			x = x+1;
+			stats[x].insert(0,"".to_string());
 		}
-		if x == profil.len(){
-			break;
-		}
+		last = bests[x];
 	}
-	let mut discip:Vec<String> = Vec::new();
-	for x in 0..profil.len(){
-		if profil[x].len() > 1{
-			for y in 1..profil[x].len(){
-				if discip.len() == 0{
-					discip.push(profil[x][y][0].clone());
-				}else{
-					let mut found = false;
-					for d in discip.clone() {
-						if d == profil[x][y][0]{
-							found = true;
-						}
-					}
-					if found == false{
-						discip.push(profil[x][y][0].clone());
-					}
-				}
-			}
-		}
-	}
-	let mut res:Vec<Vec<String>> = Vec::new();
-	let mut years = get_years();
-	let mut lyear:String = "".to_string();
-	let mut byear = false;
-	let mut count = 0;
-	let mut pb:Vec<f64> = Vec::new();
-	let mut iaafpb:Vec<String> = Vec::new();
-	let mut spb:Vec<String> = Vec::new();
-	for d in discip.clone(){
-		pb.push(0.00);
-		spb.push("".to_string());
-		iaafpb.push("".to_string());
-	}
-	for x in 0..profil.len(){
-		if lyear ==  profil[x][0][0]{
-			byear = true;
-		}
-		let mut row:Vec<String> = Vec::new();
-		if profil[x].len() > 1{
-			let mut pos = Vec::new();
-			for y in 1..profil[x].len(){
-				for d in 0..discip.len() {
-					if discip[d] == profil[x][y][0]{
-						let mut result:f64 = 0.0;
-						let stemp = profil[x][y][2].replace(";",":");
-						let minutes = stemp.split(":").collect::<Vec<_>>();
-						if minutes.len() == 1{
-							result = minutes[0].replace(",",".").parse::<f64>().unwrap();
-						}else if minutes.len() == 2{
-							result = minutes[0].parse::<f64>().unwrap()*60.0+minutes[1].replace(",",".").parse::<f64>().unwrap();
-						}else{
-							result = minutes[0].parse::<f64>().unwrap()*60.0*60.0+minutes[1].parse::<f64>().unwrap()*60.0+minutes[2].replace(",",".").parse::<f64>().unwrap();
-						}
-						if pb[d] != 0.00{
-							if discip[d].find("m").unwrap_or(99) != 99 || discip[d] == "HM" || discip[d] == "Marathon"{
-								if pb[d] > result{
-									pb.remove(d);
-									pb.insert(d,result);
-									spb.remove(d);
-									spb.insert(d, profil[x][y][2].clone());
-									iaafpb.remove(d);
-									iaafpb.insert(d, profil[x][y][3].clone());
-								}
-							}else{
-								if pb[d] < result{
-									pb.remove(d);
-									pb.insert(d,result);
-									spb.remove(d);
-									spb.insert(d, profil[x][y][2].clone());
-									iaafpb.remove(d);
-									iaafpb.insert(d, profil[x][y][3].clone());
-								}								
-							}
-						}else {
-							pb.remove(d);
-							pb.insert(d,result);
-							spb.remove(d);
-							spb.insert(d, profil[x][y][2].clone());
-							iaafpb.remove(d);
-							iaafpb.insert(d, profil[x][y][3].clone());
-						}
-						pos.push(vec!(profil[x][y][0].clone(),profil[x][y][2].clone()));
-					}
-				}
-			}
-			for d in 0..discip.len(){	
-				let mut found = false;
-				for i in pos.clone(){
-					if i[0] == discip[d]{
-						if byear == false{
-							row.insert(d,i[1].clone());
-						}else{
-							res[count-1].remove(d+1);
-							res[count-1].insert(d+1,i[1].clone());
-						}
-						found = true;
-					}
-				}		
-				if found == false{
-					if byear == false{
-						row.insert(d,"x".to_string());
-					}
-				}
-			}
-		}
-		if byear == false{
-			row.insert(0,profil[x][0][0].clone());
-			res.push(row);
-			count = count +1;
-		}
-		lyear = profil[x][0][0].clone();
-		byear = false;
-	}
-	discip.insert(0,profil[0][0][1].clone());
-	spb.insert(0,"PB".to_string());
-	res.push(spb);
-	iaafpb.insert(0, "Iaaf Points".to_string());
-	res.push(iaafpb);
-	res.insert(0,discip);
-	let mut data:Vec<Vec<Vec<String>>> = vec!(vec!(vec!("".to_string())));
-	data.push(vec!(vec!("c".to_string())));
-	data.push(transpose(res.clone()));
-	data.remove(0);
-	data
+	stats.insert(0,vec!("Rank".to_string(),"Discipline".to_string(),"Name".to_string(),"Mark".to_string(),"Date".to_string(),"City".to_string(),"WA Points".to_string()));
+	stats
 }
-fn transpose<T>(v: Vec<Vec<T>>) -> Vec<Vec<T>>
-where 
-	T:Clone{
-	assert!(!v.is_empty());
-	(0..v[0].len())
-	.map(|i| v.iter().map(|inner| inner[i].clone()).collect::<Vec<T>>())
-	.collect()
-}
-fn main() {
-	//println!("{:?}",get_ages("2013".to_string()));
-	//displayTable(getDataFromWebsite("https://www.has.hr/images/stories/HAS/tabsez/2013/ssm13d.htm"));
-	//println!("{:?}",get_single_profile(modify_data(getDataFromCache("/has/cache/2016/ssm16.html"),"ssm16.html".to_string(),"2016".to_string()),"Penezić".to_string()));
-	//get_ages("2020".to_string());
-	init_cache();
+fn get_club_record() -> Vec<Vec<Vec<String>>>{
+	let years = get_years();
+	let barYear = ProgressBar::new(years.len() as u64);
+	let gender = "".to_string();
+	let bday = 0;
+	let mut res:Vec<Vec<Vec<String>>>= Vec::new();
+	let mut discip:Vec<Vec<String>> = Vec::new();
+	let mut best:Vec<f64> = Vec::new();
 	
-	let age:String;
-	let category:String;
-	let mut data:Vec<Vec<Vec<String>>> = vec!(vec!(vec!("".to_string())));
-	let mut alias:Vec<Vec<String>> = vec![];
-	let year = CLI_question("Choose a year",get_years(),true);
-	if year != "all".to_string(){
-		for x in get_ages(year.clone()){
-			alias.push(get_age_alias(x, year.clone()));
-		}
-		age = CLI_question_alias("Choose a age",get_ages(year.clone()), alias);
-		data = getDataFromCache(&*("/has/cache/".to_owned() + &year.clone() + "/" + &age.clone()));
-		data = modify_data(data.clone(),age.clone(),year.clone());
-		let ans = CLI_question("Do you want to see all categories", vec!("yes".to_string(),"no".to_string()),false);
-		if ans == "no"{
-			let mut alias:Vec<Vec<String>> = vec![];
-			for x in get_categories(data.clone()){
-				alias.push(get_category_alias(x));
+	for x in 5..years.len(){
+		let mut data:Vec<Vec<Vec<String>>>;
+		for age in get_ages(years[x].clone()){
+			data = get_data(&("/has/cache/".to_owned() + &years[x].clone() + "/" + &age.clone()));
+			println!("{} {}",get_age_alias(age.clone(),years[x].clone())[2],years[x].clone());
+			for discipline in data{
+				if discipline.len() != 0{
+					for person in 1..discipline.len(){
+						if discipline[person].len() > 1{
+							if discipline[0].len() > 1{
+								if discipline[0][3] == "single" || discipline[0][3] == "wind"{
+									if discipline[person][5] == "AGR"{
+										if discip.len() != 0{
+											let mut found = false;
+											for d in 0..discip.len(){
+												if discip[d][0] == discipline[0][2] && get_age_alias(age.clone(),years[x].clone())[2] == discip[d][1]{
+													if discip[d][0].clone().contains("m") || discip[d][0].clone().contains("x") || discip[d][0].clone().contains("0") || discip[d][0].clone().contains("Ma"){
+														if get_result(discipline[person][1].clone()) < best[d]{
+															discip.remove(d);
+															discip.insert(d,vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),discipline[person][3].clone(),discipline[person][1].clone(),discipline[person][6].clone(),discipline[person][7].clone()));
+															best.remove(d);
+															best.insert(d,get_result(discipline[person][1].clone()));
+														}
+													}else{
+														if get_result(discipline[person][1].clone()) > best[d]{
+															discip.remove(d);
+															discip.insert(d,vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),discipline[person][3].clone(),discipline[person][1].clone(),discipline[person][6].clone(),discipline[person][7].clone()));
+															best.remove(d);
+															best.insert(d,get_result(discipline[person][1].clone()));
+														}
+													}
+													found = true;
+													break;
+												}
+											}
+											if found == false{
+												discip.push(vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),discipline[person][3].clone(),discipline[person][1].clone(),discipline[person][6].clone(),discipline[person][7].clone()));
+												best.push(get_result(discipline[person][1].clone()));
+											}
+										}else{
+											discip.push(vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),discipline[person][3].clone(),discipline[person][1].clone(),discipline[person][6].clone(),discipline[person][7].clone()));
+											best.push(get_result(discipline[person][1].clone()));
+										}
+										break;
+									}
+								}else if discipline[0][3] == "multi"{
+									if discipline[person][4] == "AGR"{
+										if discip.len() != 0{
+											let mut found = false;
+											for d in 0..discip.len(){
+												if discip[d][0] == discipline[0][2] && get_age_alias(age.clone(),years[x].clone())[2] == discip[d][1]{
+													if discip[d][0].clone().contains("m") || discip[d][0].clone().contains("x") || discip[d][0].clone().contains("0") || discip[d][0].clone().contains("Ma"){
+														if get_result(discipline[person][1].clone()) < best[d]{
+															discip.remove(d);
+															discip.insert(d,vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),discipline[person][2].clone(),discipline[person][1].clone(),discipline[person][5].clone(),discipline[person][6].clone()));
+															best.remove(d);
+															best.insert(d,get_result(discipline[person][1].clone()));
+														}
+													}else{
+														if get_result(discipline[person][1].clone()) > best[d]{
+															discip.remove(d);
+															discip.insert(d,vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),discipline[person][2].clone(),discipline[person][1].clone(),discipline[person][5].clone(),discipline[person][6].clone()));
+															best.remove(d);
+															best.insert(d,get_result(discipline[person][1].clone()));
+														}
+													}
+													found = true;
+													break;
+												}
+											}
+											if found == false{
+												discip.push(vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),discipline[person][2].clone(),discipline[person][1].clone(),discipline[person][5].clone(),discipline[person][6].clone()));
+												best.push(get_result(discipline[person][1].clone()));
+											}
+										}else{
+											discip.push(vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),discipline[person][2].clone(),discipline[person][1].clone(),discipline[person][5].clone(),discipline[person][6].clone()));
+											best.push(get_result(discipline[person][1].clone()));
+										}
+										break;
+									}									
+								}else if discipline[0][3] == "rally"{
+									if discipline[person][2] == "AGRAM, ZAGREB"{
+										if discip.len() != 0{
+											let mut found = false;
+											for d in 0..discip.len(){
+												if discip[d][0] == discipline[0][2] && get_age_alias(age.clone(),years[x].clone())[2] == discip[d][1]{
+													if discip[d][0].clone().contains("m") || discip[d][0].clone().contains("x") || discip[d][0].clone().contains("0") || discip[d][0].clone().contains("Ma"){
+														if get_result(discipline[person][1].clone()) < best[d]{
+															discip.remove(d);
+															discip.insert(d,vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),	discipline[person][5].clone() + &", ".to_owned() +&discipline[person][6].clone() + &", ".to_owned()+&discipline[person][7].clone() + &", ".to_owned()+&discipline[person][8].clone(),discipline[person][1].clone(),discipline[person][3].clone(),discipline[person][4].clone()));
+															best.remove(d);
+															best.insert(d,get_result(discipline[person][1].clone()));
+														}
+													}else{
+														if get_result(discipline[person][1].clone()) > best[d]{
+															discip.remove(d);
+															discip.insert(d,vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),	discipline[person][5].clone() + &", ".to_owned() +&discipline[person][6].clone() + &", ".to_owned()+&discipline[person][7].clone() + &", ".to_owned()+&discipline[person][8].clone(),discipline[person][1].clone(),discipline[person][3].clone(),discipline[person][4].clone()));
+															best.remove(d);
+															best.insert(d,get_result(discipline[person][1].clone()));
+														}
+													}
+													found = true;
+													break;
+												}
+											}
+											if found == false{
+												discip.push(vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),	discipline[person][5].clone() + &", ".to_owned() +&discipline[person][6].clone() + &", ".to_owned()+&discipline[person][7].clone() + &", ".to_owned()+&discipline[person][8].clone(),discipline[person][1].clone(),discipline[person][3].clone(),discipline[person][4].clone()));
+												best.push(get_result(discipline[person][1].clone()));
+											}
+										}else{
+											discip.push(vec!(discipline[0][2].clone(),get_age_alias(age.clone(),years[x].clone())[2].clone(),	discipline[person][5].clone() + &", ".to_owned() +&discipline[person][6].clone() + &", ".to_owned()+&discipline[person][7].clone() + &", ".to_owned()+&discipline[person][8].clone(),discipline[person][1].clone(),discipline[person][3].clone(),discipline[person][4].clone()));
+											best.push(get_result(discipline[person][1].clone()));
+										}
+										break;
+									}									
+								}
+							}
+						}
+					}
+				}
 			}
-			category = CLI_question_alias("Choose a category", get_categories(data.clone()),alias);
-			data = getDiscipline(data.clone(), &*category);
 		}
-		let ans = CLI_question("Do you want filter the results", vec!("yes".to_string(),"no".to_string()),false);
-		if ans == "yes"{
-			let key = CLI_input("Who do you want to search for");
-			data = get_profile(data,key.to_string());
-		}
-		let ans = CLI_question("Do you want to save the result", vec!("yes".to_string(),"no".to_string()),false);
-		if ans == "yes"{
-			saveCSV(data.clone());
-		}
-		displayTable(data.clone());
-	}else{
-		let key = CLI_input("Who do you want to search for");
-		data = get_carrer_profile(&key);
-		let ans = CLI_question("Do you want to save the result", vec!("yes".to_string(),"no".to_string()),false);
-		if ans == "yes"{
-			saveCSV(data.clone());
-		}
-		displayTable(data);
 	}
+	let mut min = 0;
+	let mut age = "".to_string();
+	let mut finished = false;
+	let mut sep:Vec<Vec<Vec<String>>> = Vec::new();
+	let mut temp:Vec<Vec<String>> = Vec::new();
+	while discip.len() != 0{
+		let age = discip[0][1].clone();
+		let mut temp:Vec<Vec<String>> = Vec::new();
+		let mut removed = 0;
+		for y in 0..discip.len(){
+			if age == discip[y-removed][1]{
+				temp.push(discip[y-removed].clone());
+				discip.remove(y-removed);
+				removed = removed + 1;
+			}
+		}
+		sep.push(temp);
+	}
+	let mut export:Vec<Vec<Vec<String>>>= Vec::new();
+	for mut res in sep{
+		let mut removed = 0; 
+		let mut technical:Vec<Vec<String>> = Vec::new();
+		for x in 0..res.len(){
+			if (!res[x-removed][0].contains("m") && !res[x-removed][0].contains("x")&& !res[x-removed][0].contains("0")&& !res[x-removed][0].contains("Ma") || res[x-removed][0].contains("g")) || res[x-removed][0].contains("boj"){
+				technical.push(res[x-removed].clone());
+				res.remove(x-removed);
+				removed = removed + 1;
+			}
+		}
+		let mut min = 0;
+		if res.len() > 1{
+			for x in 0..res.len()-1{
+				min = x;
+				for y in (x+1)..res.len(){
+					if get_result(res[y][3].clone()) < get_result(res[min][3].clone()) {
+						min = y;
+					}
+				}	
+				let temp = res[min].clone();
+				res[min] = res[x].clone();
+				res[x] = temp;		
+			}
+		}
+		for x in 0..technical.len(){
+			min = x;
+			for y in (x+1)..technical.len(){
+				if get_result(technical[y][3].clone()) < get_result(technical[min][3].clone()) {
+					min = y;
+				}
+			}	
+			let temp = technical[min].clone();
+			technical[min] = technical[x].clone();
+			technical[x] = temp;
+		}
+		for x in 0..technical.len(){
+			res.push(technical[x].clone());
+		}
+		let mut row:Vec<Vec<String>> = Vec::new();
+		for d in res{
+			row.push(d.clone());
+		}
+		
+		export.push(row.clone());
+		row.clear();
+	}
+	export
+	/*for d in 0..res.len(){
+		for x in 0..res[d].len()-1{
+			min = x;
+			for y in (x+1)..res[d].len(){
+				if get_result(res[d][y][3].clone()) > get_result(res[d][min][3].clone()) {
+					min = y;
+				}
+			}	
+			let temp = res[d][min].clone();
+			res[d][min] = res[d][x].clone();
+			res[d][x] = temp;		
+		}
+	}*/
+}
+
+fn main(){
+	let data = vec!(get_stats("2021".to_string()));
+	display(data.clone());
+	save_stats(data.clone(), "2021".to_string());
+	/*let years = get_years();
+	for x in 0..years.len(){
+		for age in get_ages(years[x].clone()){
+			for disp in get_categories(get_data(&("/has/cache/".to_owned() + &years[x].clone() + "/" + &age.clone()))){
+				if disp.contains("0") == true && disp.contains("m") == false{	
+					println!("{} {}", age, disp);
+				}
+			}
+		}
+	}*/
+	/*let args: Vec<String> = env::args().collect();
+	cache();
+	if args.len() == 1{
+		while true{
+			//save_csv(vec!(get_profile(get_data("/has/cache/2021/ssm21.html"), "Fran bonifačić".to_string())));
+			let mut alias:Vec<Vec<String>> = vec![];
+			let year = CLI_question("Choose a year",get_years(),true);
+			if year != "all".to_string(){
+				for x in get_ages(year.clone()){
+					alias.push(get_age_alias(x, year.clone()));
+				}
+				let age = CLI_question_alias("Choose a age",get_ages(year.clone()), alias);
+				if age != "all".to_string(){
+					let data = get_data(&*("/has/cache/".to_owned() + &year.clone() + "/" + &age.clone()));
+					let discipline = CLI_question("Choose a discipline",get_categories(data.clone()),true);
+					if discipline != "all".to_string(){
+						display(vec!(get_category(data,discipline)));
+					}else{
+						let key = CLI_input("Who do you want to search for");
+						let data = get_profile(data,key);
+						display(vec!(data.clone()));
+						save_csv(vec!(data));
+					}
+				}else{
+					let key = CLI_input("Who do you want to search for");
+					let mut data:Vec<Vec<Vec<String>>> = Vec::new();
+					data.push(vec!(vec!(year.clone() + &" profiles".to_string())));
+					let barYear = ProgressBar::new(get_ages(year.clone()).len() as u64);
+					for x in get_ages(year.clone()){
+						data.push(get_profile(get_data(&*("/has/cache/".to_owned() + &year.clone() + "/" + &x.clone())),key.clone()));		
+						barYear.inc(1);		
+					}
+					barYear.finish();	
+					display(data.clone());
+					save_csv(data);
+				}
+			}else{
+				let key = CLI_input("Who do you want to search for");
+				let data = get_carrer(key);
+				display(vec!(data.clone()));
+				save_csv(vec!(data));
+			}
+		}
+	}else if args[1] == "s"{
+		while true{
+			let key = CLI_input("What year do you want statistics for?");
+			let data = get_stats(key.clone());
+			display(vec!(data.clone()));
+			save_stats(vec!(data),key);	
+		}		
+	}else if args[1] == "c"{
+		while true{
+			let discip = CLI_input("What discipline do you want to calculate?");
+			let result = CLI_input("What result do you want to calculate?");
+			println!("Number of points they would get is {}\n", calculate_points_manual(result,discip));
+		}		
+	}else if args[1] == "r"{
+		let data = get_club_record();
+		display(data.clone());
+		save_stats(data.clone(), "records".to_string());
+	}*/
 }
