@@ -1,6 +1,6 @@
 [package]
 name = "new_has_scraper"
-version = "3.0.0"
+version = "3.0.1"
 authors = ["Tomislav Mikić <tmikic100@gmail.com>"]
 edition = "2018"
 

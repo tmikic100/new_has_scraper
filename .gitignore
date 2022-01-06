@@ -10,3 +10,7 @@ src/y.rs
 test.txt
 error.log
 test.txt
+Cargo.lock
+.vscode/launch.json
+.gitignore
+Cargo.lock

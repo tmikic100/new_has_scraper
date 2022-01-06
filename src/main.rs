@@ -194,7 +194,7 @@ fn display(data: Vec<Vec<Vec<String>>>){
 					table.add_row(Row::new(vec!("Rank".to_string(),"Mark".to_string(),"Wind".to_string(),"Name".to_string(),"Birthday".to_string(),"Club".to_string(),"City".to_string(),"Date".to_string())));
 				}else if data[x][0][3] == "multi"{
 					table.add_row(Row::new(vec!("Rank".to_string(),"Mark".to_string(),"Name".to_string(),"Birthday".to_string(),"Club".to_string(),"City".to_string(),"Date".to_string(),"Results".to_string())));				
-				}else if data[x][0][3] == "rally"{
+				}else if data[x][0][3] == "relay"{
 					table.add_row(Row::new(vec!("Rank".to_string(),"Mark".to_string(),"Name".to_string(),"City".to_string(),"Date".to_string(),"Runner 1".to_string(),"Runner 2".to_string(),"Runner 3".to_string(),"Runner 4".to_string())));					
 				}
 				for y in 1..data[x].len(){
@@ -247,7 +247,7 @@ fn save_csv(data:Vec<Vec<Vec<String>>>){
 					csv += &("Rank~Mark~Wind~Name~Birthday~Club~City~Date\n");
 				}else if data[x][0][3] == "multi"{
 					csv += &("Rank~Mark~Name~Birthday~Club~City~Date~Results\n");
-				}else if data[x][0][3] == "rally"{
+				}else if data[x][0][3] == "relay"{
 					csv += &("Rank~Mark~Name~City~Club~Runner 1~Runner 2~Runner 3~Runner 4");
 					
 				}
@@ -588,7 +588,7 @@ pub fn get_data(path: &str) -> Vec<Vec<Vec<String>>>{
     	static ref WIND_DATA: Regex = Regex::new(r" ([+-]?\d,\d) ").unwrap();	
 		static ref EXTRACT_DISCIPLINE: Regex = Regex::new(r"(?u)<b>([^\n]*) / [^\n]* - ([\p{L}\d (),.=-]*)(?: / [\p{L}\d ,.()=]*)?</b>\n([\p{L}(-; \n]*)").unwrap();
 		static ref SINGLE_EXTRACT: Regex = Regex::new(r"(\d{0,2}[;:]?\d{0,2}:?\d+,\d{1,2}|\d*[;:]*\d*:\d+) +([+-]{0,1}\d,\d)? +([-\p{L} -]+?) +(\d{2}.\d{2}.\d{4}|\d{4})? ([\p{L}\d-]+?)? +([\p{L},/ .-]+?) +(\d{2}.\d{2}.\d{4})").unwrap();
-		static ref RALLY_EXTRACT: Regex = Regex::new(r"(\d*:*\d+,\d{1,2}) +([\p{L} ,-]+?) {2,}([\p{L},/ ]+?) +(\d{2}.\d{2}.\d{4})\s+([\p{L} -]+?) \(\d{4}\), ([\p{L} -]+?) \(\d{4}\), ([\p{L} -]+?) \(\d{4}\), ([\p{L} -]+?) \(\d{4}\)").unwrap();
+		static ref RELAY_EXTRACT: Regex = Regex::new(r"(\d*:*\d+,\d{1,2}) +([\p{L} ,-]+?) {2,}([\p{L},/ ]+?) +(\d{2}.\d{2}.\d{4})\s+([\p{L} -]+?) \(\d{4}\), ([\p{L} -]+?) \(\d{4}\), ([\p{L} -]+?) \(\d{4}\), ([\p{L} -]+?) \(\d{4}\)").unwrap();
 		static ref MULTI_EXTRACT: Regex = Regex::new(r"(\d{3,}) +([\d\p{L} \.-]+?) +(\d{2}.\d{2}.\d{4}|\d{4}) ([\p{L}-]{0,}) +([\p{L},/ ]+?) +((?:\d{2}[/-])?\d{2}.\d{2}.\d{4})\s+([\p{L}0-9/:+, -]+)").unwrap();
 	}
 	let mut data:Vec<Vec<Vec<String>>> = Vec::new();
@@ -657,7 +657,7 @@ pub fn get_data(path: &str) -> Vec<Vec<Vec<String>>>{
 					res.insert(0,vec!(res[0][7][res[0][7].len()-4..res[0][7].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][7][res[0][7].len()-4..res[0][7].len()]+"/"),""),(&caps[2]).to_string(),"wind".to_string(),extra_pos.to_string()));
 				}
 			}
-		}else if !(MULTI_EXTRACT.is_match(&caps[3]) || RALLY_EXTRACT.is_match(&caps[3])){
+		}else if !(MULTI_EXTRACT.is_match(&caps[3]) || RELAY_EXTRACT.is_match(&caps[3])){
 			for x in v{
 				let mut temp:Vec<String> = Vec::new();		
 				if SINGLE_EXTRACT.is_match(x){
@@ -707,7 +707,7 @@ pub fn get_data(path: &str) -> Vec<Vec<Vec<String>>>{
 					res.insert(0,vec!(res[0][7][res[0][7].len()-4..res[0][7].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][7][res[0][7].len()-4..res[0][7].len()]+"/"),""),(&caps[2]).to_string(),"single".to_string(),extra_pos.to_string()));
 				}
 			}
-		}else if MULTI_EXTRACT.is_match(&caps[3]) || RALLY_EXTRACT.is_match(&caps[3]){
+		}else if MULTI_EXTRACT.is_match(&caps[3]) || RELAY_EXTRACT.is_match(&caps[3]){
 			//println!("ooooooooooooooooooooooooooooooooooooo");
 			let multi_line = Regex::new(r"(?um)(?:\d*:*\d+,\d{1,2}|\d+).+\n.+").unwrap();
 			for t in multi_line.captures_iter(&caps[3]) {
@@ -736,8 +736,8 @@ pub fn get_data(path: &str) -> Vec<Vec<Vec<String>>>{
 						}
 						res.push(temp.clone());
 						temp.clear();
-					}else if RALLY_EXTRACT.is_match(x.as_str()){
-						for y in RALLY_EXTRACT.captures_iter(x.as_str()) {
+					}else if RELAY_EXTRACT.is_match(x.as_str()){
+						for y in RELAY_EXTRACT.captures_iter(x.as_str()) {
 							temp.push(rank.to_string());
 							rank = rank +1;
 							let mut first = false;
@@ -763,11 +763,11 @@ pub fn get_data(path: &str) -> Vec<Vec<Vec<String>>>{
 					}			
 				}
 			}
-			if RALLY_EXTRACT.is_match(&caps[3]){
+			if RELAY_EXTRACT.is_match(&caps[3]){
 				if !&caps[1].contains("mješovita"){
-					res.insert(0,vec!(res[0][4][res[0][4].len()-4..res[0][4].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][4][res[0][4].len()-4..res[0][4].len()]+"/"),""),(&caps[2]).to_string(),"rally".to_string(),"".to_string()));
+					res.insert(0,vec!(res[0][4][res[0][4].len()-4..res[0][4].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][4][res[0][4].len()-4..res[0][4].len()]+"/"),""),(&caps[2]).to_string(),"relay".to_string(),"".to_string()));
 				}else{
-					res.insert(0,vec!(res[0][4][res[0][4].len()-4..res[0][4].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][4][res[0][4].len()-4..res[0][4].len()]+"/"),""),"X".to_string()+&(&caps[2]).to_string(),"rally".to_string(),"".to_string()));
+					res.insert(0,vec!(res[0][4][res[0][4].len()-4..res[0][4].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][4][res[0][4].len()-4..res[0][4].len()]+"/"),""),"X".to_string()+&(&caps[2]).to_string(),"relay".to_string(),"".to_string()));
 				}
 			}else if MULTI_EXTRACT.is_match(&caps[3]){
 				res.insert(0,vec!(res[0][6][res[0][6].len()-4..res[0][6].len()].to_string(),path.to_string().replace(&("/has/cache/".to_owned()+&res[0][6][res[0][6].len()-4..res[0][6].len()]+"/"),""),(&caps[2]).to_string(),"multi".to_string(),extra_pos.to_string()));
@@ -813,7 +813,7 @@ pub fn get_profile(data:Vec<Vec<Vec<String>>>, search: String) -> Vec<Vec<String
 							
 						}
 					}
-				}else if discip[0][3] == "rally"{
+				}else if discip[0][3] == "relay"{
 					if discip[x][5].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase() || discip[x][6].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase() || discip[x][7].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase() || discip[x][8].replace(" ","").to_lowercase() == search.replace(" ","").to_lowercase(){
 						if data[0][0].len() > 1{
 							if data[0][0][1].clone().contains("d.html"){
@@ -1038,8 +1038,8 @@ gets every result and calculates the points for it and sorts it from highest to 
 */
 fn get_stats(year: String) -> Vec<Vec<String>>{
 	let mut stats: Vec<Vec<String>> = Vec::new();
-	let mut rally: Vec<Vec<String>> = Vec::new();
-	let mut rallyCount: i32 = 0;
+	let mut relay: Vec<Vec<String>> = Vec::new();
+	let mut relayCount: i32 = 0;
 	let mut bests: Vec<i32> = Vec::new();
 	let barYear = ProgressBar::new(get_ages(year.clone()).len() as u64);
 	for age in get_ages(year.clone()){
@@ -1087,8 +1087,8 @@ fn get_stats(year: String) -> Vec<Vec<String>>{
 									stats.push(vec!(discip[0][2].clone()+sufix.clone(),discip[x][3].clone(),discip[x][1].clone(),discip[x][7].clone(),discip[x][6].clone()));
 									bests.push(points);
 								}									
-							}else if discip[0][3] == "rally"{
-								if rally.len() != 0{
+							}else if discip[0][3] == "relay"{
+								if relay.len() != 0{
 									let mut pos = 0;
 									let mut team = 0;
 									let mut teamCount = 0;
@@ -1096,28 +1096,26 @@ fn get_stats(year: String) -> Vec<Vec<String>>{
 										team = 0;
 										if stats[stat][1].contains("%"){
 											let i = stats[stat][1].replace("%","").parse::<usize>().unwrap();
-											if stats[stat][0].clone() == discip[0][2].clone()+sufix.clone(){
-												for e in 0..rally[i].len(){
-													let mut found = false;
-													if discip[x][e+5] == rally[i][e]{
+											for e in 0..relay[i].len(){
+												let mut found = false;
+												for j in 5..8{
+													if discip[x][j] == relay[i][e]{
 														found = true;
 														team = team+1;
-													}	
-													if found == false{
 														break;
 													}
-													if team == 3{
-														break;
-													}
-												}	
-												if team == 3{
-													pos = stat;
-													teamCount = i;
+												}			
+												if found == false{
 													break;
 												}
 											}
+											if team == 3{
+												pos = stat;
+												teamCount = i;
+												break;
+											}
 										}
-									}
+									}									
 									if team == 3{
 										if points > bests[pos]{
 											stats.remove(pos);
@@ -1126,16 +1124,16 @@ fn get_stats(year: String) -> Vec<Vec<String>>{
 											bests.insert(pos,points);
 										}
 									}else{
-										rally.push(vec!(discip[x][5].clone(),discip[x][6].clone(),discip[x][7].clone(),discip[x][8].clone()));
-										stats.push(vec!(discip[0][2].clone()+sufix.clone(),rallyCount.clone().to_string()+"%",discip[x][1].clone(),discip[x][4].clone(),discip[x][3].clone()));
+										relay.push(vec!(discip[x][5].clone(),discip[x][6].clone(),discip[x][7].clone(),discip[x][8].clone()));
+										stats.push(vec!(discip[0][2].clone()+sufix.clone(),relayCount.clone().to_string()+"%",discip[x][1].clone(),discip[x][4].clone(),discip[x][3].clone()));
 										bests.push(points);
-										rallyCount = rallyCount+1;
+										relayCount = relayCount+1;
 									}
 								}else{
-									rally.push(vec!(discip[x][5].clone(),discip[x][6].clone(),discip[x][7].clone(),discip[x][8].clone()));
-									stats.push(vec!(discip[0][2].clone()+sufix.clone(),rallyCount.clone().to_string()+"%",discip[x][1].clone(),discip[x][4].clone(),discip[x][3].clone()));
+									relay.push(vec!(discip[x][5].clone(),discip[x][6].clone(),discip[x][7].clone(),discip[x][8].clone()));
+									stats.push(vec!(discip[0][2].clone()+sufix.clone(),relayCount.clone().to_string()+"%",discip[x][1].clone(),discip[x][4].clone(),discip[x][3].clone()));
 									bests.push(points);
-									rallyCount = rallyCount+1;
+									relayCount = relayCount+1;
 								}
 							}else if discip[0][3] == "multi"{
 								if stats.len() != 0{
@@ -1190,7 +1188,7 @@ fn get_stats(year: String) -> Vec<Vec<String>>{
 		bests[x] = temp;			
 	}
 	let mut last = 0;
-	for x in rally.clone(){	
+	for x in relay.clone(){	
 		println!("{:?}",x);
 	}
 	for x in 0..stats.len(){
@@ -1198,10 +1196,10 @@ fn get_stats(year: String) -> Vec<Vec<String>>{
 			println!("{:?}",stats[x].clone());
 			let i = stats[x][1].replace("%","").parse::<usize>().unwrap();
 			let mut name = "".to_string();
-			for e in 0..rally[i].len()-1{
-				name = name + &rally[i][e].clone() + ", ";
+			for e in 0..relay[i].len()-1{
+				name = name + &relay[i][e].clone() + ", ";
 			}
-			name = name + &rally[i][3].clone();
+			name = name + &relay[i][3].clone();
 			stats[x].remove(1);
 			stats[x].insert(1, name);
 		}
@@ -1305,7 +1303,7 @@ fn get_club_record() -> Vec<Vec<Vec<String>>>{
 										}
 										break;
 									}									
-								}else if discipline[0][3] == "rally"{
+								}else if discipline[0][3] == "relay"{
 									if discipline[person][2] == "AGRAM, ZAGREB"{
 										if discip.len() != 0{
 											let mut found = false;
